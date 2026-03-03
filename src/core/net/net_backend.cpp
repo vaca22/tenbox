@@ -42,9 +42,15 @@ static uint32_t GetHostDnsServer() {
     }
     if (ret == NO_ERROR) {
         auto* info = reinterpret_cast<FIXED_INFO*>(buf.get());
-        unsigned long addr = inet_addr(info->DnsServerList.IpAddress.String);
-        if (addr != INADDR_NONE && addr != 0)
+        for (auto* entry = &info->DnsServerList; entry; entry = entry->Next) {
+            unsigned long addr = inet_addr(entry->IpAddress.String);
+            if (addr == INADDR_NONE || addr == 0)
+                continue;
+            // Skip loopback — the guest VM cannot reach the host via 127.x.x.x
+            if ((ntohl(addr) >> 24) == 127)
+                continue;
             return ntohl(addr);
+        }
     }
     return 0x08080808; // fallback: 8.8.8.8
 }

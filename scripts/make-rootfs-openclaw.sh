@@ -131,6 +131,7 @@ STEPS=(
     "install_guest_agent"
     "install_devtools"
     "install_audio"
+    "install_ibus"
     "install_usertools"
     "install_nodejs"
     "install_openclaw"
@@ -159,6 +160,7 @@ STEP_DESCRIPTIONS=(
     "Install Guest Agent"
     "Install development tools"
     "Install audio (PulseAudio + ALSA)"
+    "Install IBus Chinese input method"
     "Install user tools (Chromium, etc.)"
     "Install Node.js 22"
     "Install OpenClaw"
@@ -509,6 +511,26 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 EOF
 }
 
+do_install_ibus() {
+    sudo chroot "$MOUNT_DIR" /bin/bash -e << EOF
+if dpkg -s ibus-libpinyin &>/dev/null; then
+    echo "  IBus already installed"
+    exit 0
+fi
+echo "Installing IBus Chinese input method..."
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    ibus ibus-libpinyin ibus-gtk3 ibus-gtk4
+
+cat >> /home/$USER_NAME/.bashrc << 'IBUS'
+
+# IBus input method
+export GTK_IM_MODULE=ibus
+export QT_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+IBUS
+EOF
+}
+
 do_install_nodejs() {
     # Cache NodeSource setup script (atomic write)
     if [ ! -f "$CACHE_NODESOURCE" ] || [ ! -s "$CACHE_NODESOURCE" ]; then
@@ -794,6 +816,7 @@ run_step "install_spice"  "Installing SPICE vdagent"  do_install_spice
 run_step "install_guest_agent" "Installing Guest Agent" do_install_guest_agent
 run_step "install_devtools" "Installing dev tools"    do_install_devtools
 run_step "install_audio"  "Installing audio"          do_install_audio
+run_step "install_ibus"   "Installing IBus"           do_install_ibus
 run_step "install_usertools" "Installing user tools"  do_install_usertools
 run_step "install_nodejs" "Installing Node.js"        do_install_nodejs
 run_step "install_openclaw" "Installing OpenClaw"     do_install_openclaw

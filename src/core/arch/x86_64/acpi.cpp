@@ -209,10 +209,11 @@ static uint32_t BuildDsdt(uint8_t* buf,
 
 static constexpr uint32_t kFadtSize = 268; // FADT revision 5
 
-// PM1 register I/O ports (must match AcpiPm device in the VMM)
+// PM register I/O ports (must match AcpiPm device in the VMM)
 static constexpr uint16_t kPm1aEvtPort = 0x600;
 static constexpr uint16_t kPm1aCntPort = 0x604;
-static constexpr uint16_t kResetPort   = 0x608;
+static constexpr uint16_t kPmTmrPort   = 0x608;
+static constexpr uint16_t kResetPort   = 0x60F;
 static constexpr uint8_t  kResetValue  = 0x01;
 
 static void BuildFadt(uint8_t* buf, GPA dsdt_addr) {
@@ -240,18 +241,23 @@ static void BuildFadt(uint8_t* buf, GPA dsdt_addr) {
     uint32_t pm1a_cnt = kPm1aCntPort;
     memcpy(buf + 64, &pm1a_cnt, 4);
 
+    // PM_TMR_BLK (offset 76, 4 bytes) — PM Timer register
+    uint32_t pm_tmr = kPmTmrPort;
+    memcpy(buf + 76, &pm_tmr, 4);
+
     // PM1_EVT_LEN (offset 88) = 4
     buf[88] = 4;
     // PM1_CNT_LEN (offset 89) = 2
     buf[89] = 2;
+    // PM_TMR_LEN (offset 91) = 4
+    buf[91] = 4;
 
     // Flags (offset 112, uint32_t):
     //   Bit 4 (PWR_BUTTON): 1 = no fixed-hardware power button
     //   Bit 5 (SLP_BUTTON): 1 = no fixed-hardware sleep button
+    //   Bit 8 (TMR_VAL_EXT): 1 = PM Timer is 32-bit (otherwise 24-bit)
     //   Bit 10 (RESET_REG_SUP): 1 = RESET_REG is supported
-    // We don't emulate fixed power/sleep button events, so set both bits
-    // to prevent the kernel from looking for handlers that don't exist.
-    uint32_t fadt_flags = (1u << 4) | (1u << 5) | (1u << 10);
+    uint32_t fadt_flags = (1u << 4) | (1u << 5) | (1u << 8) | (1u << 10);
     memcpy(buf + 112, &fadt_flags, 4);
 
     // RESET_REG — Generic Address Structure (offset 116, 12 bytes)
@@ -287,6 +293,14 @@ static void BuildFadt(uint8_t* buf, GPA dsdt_addr) {
     buf[175] = 2;   // AccessSize = Word
     uint64_t cnt_addr = kPm1aCntPort;
     memcpy(buf + 176, &cnt_addr, 8);
+
+    // X_PM_TMR_BLK — Generic Address Structure (offset 208, 12 bytes)
+    buf[208] = 1;   // AddressSpaceId = System I/O
+    buf[209] = 32;  // RegisterBitWidth
+    buf[210] = 0;   // RegisterBitOffset
+    buf[211] = 3;   // AccessSize = DWord
+    uint64_t tmr_addr = kPmTmrPort;
+    memcpy(buf + 212, &tmr_addr, 8);
 
     hdr->checksum = AcpiChecksum(buf, kFadtSize);
 }

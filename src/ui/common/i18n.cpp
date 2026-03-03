@@ -11,7 +11,7 @@ static Lang g_current_lang = Lang::kEnglish;
 
 // English strings; order must match enum S
 static const char* kStringsEn[] = {
-    "TenBox Manager",                    // kAppTitle
+    "TenBox VM Manager",                 // kAppTitle
     "Manager",                           // kMenuManager
     "VM",                                // kMenuVm
     "New VM\tCtrl+N",                    // kMenuNewVm
@@ -147,7 +147,7 @@ static const char* kStringsEn[] = {
 
 // Simplified Chinese strings; order must match enum S
 static const char* kStringsZhCN[] = {
-    "TenBox 管理器",                     // kAppTitle
+    "TenBox 虚拟机管理器",               // kAppTitle
     "管理",                              // kMenuManager
     "虚拟机",                            // kMenuVm
     "新建虚拟机\tCtrl+N",                // kMenuNewVm

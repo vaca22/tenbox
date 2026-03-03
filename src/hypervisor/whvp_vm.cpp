@@ -51,29 +51,52 @@ std::unique_ptr<WhvpVm> WhvpVm::Create(uint32_t cpu_count) {
         LOG_INFO("WHVP InterruptClockFrequency: %llu Hz", intr_freq);
     }
 
-    // Build CPUID override list: leaf 0x15 (TSC freq) + leaf 1 (features).
+    // Build CPUID override list: 0x15 (TSC freq) + 0x01 (features).
     WHV_X64_CPUID_RESULT cpuid_overrides[2]{};
     int num_overrides = 0;
 
-    // Override CPUID 0x15 so the kernel can determine TSC speed without
-    // unreliable PIT calibration.
-    int cpuid15[4]{};
-    __cpuid(cpuid15, 0x15);
-    uint32_t denom   = static_cast<uint32_t>(cpuid15[0]);
-    uint32_t numer   = static_cast<uint32_t>(cpuid15[1]);
-    uint32_t crystal  = static_cast<uint32_t>(cpuid15[2]);
+    // CPUID 0x15: TSC / Core Crystal Clock frequency.
+    // This allows the guest kernel to determine TSC speed without PIT calibration.
+    {
+        int cpuid15[4]{};
+        __cpuid(cpuid15, 0x15);
+        uint32_t denom   = static_cast<uint32_t>(cpuid15[0]);
+        uint32_t numer   = static_cast<uint32_t>(cpuid15[1]);
+        uint32_t crystal = static_cast<uint32_t>(cpuid15[2]);
 
-    if (denom && numer) {
-        if (crystal == 0) crystal = 38400000; // 38.4 MHz for modern Intel
+        if (denom && numer) {
+            // Intel CPU with native CPUID 0x15 support.
+            if (crystal == 0) crystal = 38400000;  // 38.4 MHz for modern Intel
+            uint64_t tsc_freq = static_cast<uint64_t>(crystal) * numer / denom;
+            LOG_INFO("CPUID 0x15 (native): crystal=%u Hz, TSC=%llu Hz", crystal, tsc_freq);
+        } else {
+            // AMD or older CPU without CPUID 0x15 - synthesize it from QPC measurement.
+            LARGE_INTEGER qpf, qpc_start, qpc_end;
+            QueryPerformanceFrequency(&qpf);
+            QueryPerformanceCounter(&qpc_start);
+            uint64_t tsc_start = __rdtsc();
+            Sleep(50);
+            uint64_t tsc_end = __rdtsc();
+            QueryPerformanceCounter(&qpc_end);
+
+            double elapsed = static_cast<double>(qpc_end.QuadPart - qpc_start.QuadPart)
+                             / qpf.QuadPart;
+            uint64_t tsc_freq = static_cast<uint64_t>((tsc_end - tsc_start) / elapsed);
+
+            // Synthesize: TSC = crystal * numer / denom
+            // Use 1 MHz crystal, numer = tsc_freq_mhz, denom = 1
+            crystal = 1000000;
+            numer = static_cast<uint32_t>(tsc_freq / 1000000);
+            denom = 1;
+            LOG_INFO("CPUID 0x15 (synthesized): crystal=%u Hz, TSC=%llu Hz", crystal, tsc_freq);
+        }
+
         auto& o = cpuid_overrides[num_overrides++];
         o.Function = 0x15;
         o.Eax = denom;
         o.Ebx = numer;
         o.Ecx = crystal;
         o.Edx = 0;
-        uint64_t tsc_freq = static_cast<uint64_t>(crystal) * numer / denom;
-        LOG_INFO("CPUID 0x15 override: crystal=%u Hz, TSC=%llu Hz",
-                 crystal, tsc_freq);
     }
 
     // Override CPUID leaf 1 to mask features WHVP doesn't support:

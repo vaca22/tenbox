@@ -1,9 +1,34 @@
 #include "core/device/acpi/acpi_pm.h"
+#include <intrin.h>
+
+#define NOMINMAX
+#include <windows.h>
+
+AcpiPm::AcpiPm() {
+    // Measure TSC frequency for PM Timer emulation
+    LARGE_INTEGER qpf, qpc_start, qpc_end;
+    QueryPerformanceFrequency(&qpf);
+    QueryPerformanceCounter(&qpc_start);
+    uint64_t tsc_start = __rdtsc();
+    Sleep(50);
+    uint64_t tsc_end = __rdtsc();
+    QueryPerformanceCounter(&qpc_end);
+
+    double elapsed = static_cast<double>(qpc_end.QuadPart - qpc_start.QuadPart)
+                     / qpf.QuadPart;
+    tsc_freq_ = static_cast<uint64_t>((tsc_end - tsc_start) / elapsed);
+    tsc_base_ = __rdtsc();
+}
+
+uint32_t AcpiPm::ReadPmTimer() const {
+    // Convert TSC ticks to PM Timer ticks (3.579545 MHz)
+    uint64_t tsc_now = __rdtsc();
+    uint64_t tsc_elapsed = tsc_now - tsc_base_;
+    uint64_t pm_ticks = (tsc_elapsed * kPmTimerFreq) / tsc_freq_;
+    return static_cast<uint32_t>(pm_ticks);
+}
 
 void AcpiPm::TriggerPowerButton() {
-    // FADT declares no fixed-hardware power button (PWR_BUTTON flag set).
-    // The guest is expected to shut down via console `poweroff` command,
-    // which writes SLP_EN+SLP_TYP to PM1_CNT and triggers shutdown_cb_.
     LOG_INFO("ACPI: TriggerPowerButton called (no-op; guest uses poweroff)");
 }
 
@@ -15,21 +40,26 @@ void AcpiPm::RaiseSci() {
 
 void AcpiPm::PioRead(uint16_t offset, uint8_t size, uint32_t* value) {
     switch (offset) {
-    case 0:
+    case 0:  // PM1a_EVT_BLK (PM1_STS + PM1_EN)
         if (size == 4) {
             *value = pm1_sts_ | (static_cast<uint32_t>(pm1_en_) << 16);
         } else {
             *value = pm1_sts_;
         }
         break;
-    case 2:
+    case 2:  // PM1_EN
         *value = pm1_en_;
         break;
-    case 4:
+    case 4:  // PM1a_CNT_BLK
         *value = pm1_cnt_;
         break;
-    case 8:
-        // RESET_REG read returns 0
+    case 8:  // PM_TMR_BLK
+    case 9:
+    case 10:
+    case 11:
+        *value = ReadPmTimer();
+        break;
+    case 15: // RESET_REG
         *value = 0;
         break;
     default:
@@ -40,16 +70,16 @@ void AcpiPm::PioRead(uint16_t offset, uint8_t size, uint32_t* value) {
 
 void AcpiPm::PioWrite(uint16_t offset, uint8_t size, uint32_t value) {
     switch (offset) {
-    case 0:
+    case 0:  // PM1a_EVT_BLK
         pm1_sts_ &= ~static_cast<uint16_t>(value);
         if (size == 4) {
             pm1_en_ = static_cast<uint16_t>(value >> 16);
         }
         break;
-    case 2:
+    case 2:  // PM1_EN
         pm1_en_ = static_cast<uint16_t>(value);
         break;
-    case 4: {
+    case 4: {  // PM1a_CNT_BLK
         pm1_cnt_ = static_cast<uint16_t>(value) | 1u;
         if (value & (1u << 13)) {
             uint8_t slp_typ = (value >> 10) & 7;
@@ -61,8 +91,12 @@ void AcpiPm::PioWrite(uint16_t offset, uint8_t size, uint32_t value) {
         }
         break;
     }
-    case 8:
-        // RESET_REG: writing kResetValue triggers system reset
+    case 8:  // PM_TMR_BLK (read-only, ignore writes)
+    case 9:
+    case 10:
+    case 11:
+        break;
+    case 15: // RESET_REG
         if ((value & 0xFF) == kResetValue && reset_cb_) {
             LOG_INFO("ACPI: system reset requested via RESET_REG");
             reset_cb_();

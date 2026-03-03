@@ -203,7 +203,7 @@ bool ManagerService::CreateVm(const VmCreateRequest& req, std::string* error) {
     spec.initrd_path = dst_initrd;
     spec.disk_path   = dst_disk;
     spec.cmdline     = req.cmdline.empty()
-        ? "console=ttyS0 earlyprintk=serial lapic no_timer_check tsc=reliable"
+        ? "console=ttyS0 earlyprintk=serial lapic no_timer_check tsc=reliable i8042.noprobe"
         : req.cmdline;
     spec.memory_mb   = req.memory_mb;
     spec.cpu_count   = req.cpu_count;

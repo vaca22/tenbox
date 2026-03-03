@@ -7,7 +7,7 @@
       </div>
       <p class="footer-copy">{{ $t('footer.copyright') }}</p>
       <a
-        href="https://github.com/nicit/TenBox"
+        href="https://github.com/78/tenbox"
         target="_blank"
         rel="noopener noreferrer"
         class="footer-link"
