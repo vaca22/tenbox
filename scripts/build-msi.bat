@@ -40,7 +40,12 @@ if errorlevel 1 (
 :: Step 2: Build MSI with WiX
 echo.
 echo [2/2] Building MSI with WiX...
-wix build "%PROJECT_DIR%\installer\TenBox.wxs" ^
+set WIX_PATH=C:\Program Files\WiX Toolset v6.0\bin\wix.exe
+if not exist "%WIX_PATH%" (
+    echo ERROR: WiX not found at %WIX_PATH%
+    exit /b 1
+)
+"%WIX_PATH%" build "%PROJECT_DIR%\installer\TenBox.wxs" ^
     -arch x64 ^
     -ext WixToolset.UI.wixext ^
     -ext WixToolset.Util.wixext ^
