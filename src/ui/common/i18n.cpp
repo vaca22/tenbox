@@ -136,8 +136,8 @@ static const char* kStringsEn[] = {
     "Failed to delete cache: %s",            // kImgCacheDeleteFailed
     "Update Available",                      // kUpdateAvailableTitle
     "A new version %s is available (current: %s).\n\n%s\n\nWould you like to update now?",  // kUpdateAvailableMsg
-    "Update Now",                            // kUpdateNow
-    "Not Now",                               // kUpdateSkip
+    "Yes",                                   // kUpdateNow
+    "No",                                    // kUpdateSkip
     "Downloading update...",                 // kUpdateDownloading
     "Downloading... %d%%",                   // kUpdateDownloadProgress
     "Failed to download update: %s",         // kUpdateDownloadFailed
@@ -272,8 +272,8 @@ static const char* kStringsZhCN[] = {
     "删除缓存失败：%s",                      // kImgCacheDeleteFailed
     "发现新版本",                            // kUpdateAvailableTitle
     "新版本 %s 已发布（当前版本: %s）。\n\n%s\n\n是否立即更新？",  // kUpdateAvailableMsg
-    "立即更新",                              // kUpdateNow
-    "跳过本次",                              // kUpdateSkip
+    "是",                                    // kUpdateNow
+    "否",                                    // kUpdateSkip
     "正在下载更新...",                       // kUpdateDownloading
     "正在下载... %d%%",                      // kUpdateDownloadProgress
     "下载更新失败：%s",                      // kUpdateDownloadFailed
