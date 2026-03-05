@@ -3,6 +3,7 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <commctrl.h>
 #include <commdlg.h>
 #include <shlobj.h>
 
@@ -13,23 +14,106 @@
 #include <string>
 #include <vector>
 
-// VM configuration option constants shared across dialogs.
-inline constexpr int kMemoryOptionsMb[] = {1024, 2048, 4096, 8192, 16384};
-inline const char* kMemoryLabels[]      = {"1 GB", "2 GB", "4 GB", "8 GB", "16 GB"};
-inline constexpr int kCpuOptions[]      = {1, 2, 4, 8, 16};
-inline const char* kCpuLabels[]         = {"1", "2", "4", "8", "16"};
-inline constexpr int kNumOptions        = 5;
+inline constexpr int kDefaultMemoryGb = 4;
+inline constexpr int kDefaultVcpus = 4;
 
-inline int MemoryMbToIndex(int mb) {
-    for (int i = 0; i < kNumOptions; ++i)
-        if (kMemoryOptionsMb[i] >= mb) return i;
-    return kNumOptions - 1;
+inline int GetHostMemoryGb() {
+    MEMORYSTATUSEX statex{};
+    statex.dwLength = sizeof(statex);
+    if (GlobalMemoryStatusEx(&statex))
+        return static_cast<int>(statex.ullTotalPhys / (1024ULL * 1024 * 1024));
+    return 16;
 }
 
-inline int CpuCountToIndex(int count) {
-    for (int i = 0; i < kNumOptions; ++i)
-        if (kCpuOptions[i] >= count) return i;
-    return kNumOptions - 1;
+inline int GetHostLogicalCpus() {
+    SYSTEM_INFO si{};
+    GetSystemInfo(&si);
+    return si.dwNumberOfProcessors > 0 ? static_cast<int>(si.dwNumberOfProcessors) : 4;
+}
+
+inline std::wstring FormatMemoryLabel(int gb) {
+    return i18n::to_wide(std::to_string(gb) + " GB");
+}
+
+inline std::wstring FormatCpuLabel(int count) {
+    return i18n::to_wide(std::to_string(count));
+}
+
+struct SliderRowLayout {
+    int label_w;
+    int edit_x;
+    int slider_w;
+    int slider_h;
+    int value_w;
+    int form_row_h;
+    int label_y_off;
+};
+
+inline SliderRowLayout CalcSliderRowLayout(int client_w, int margin, int btn_h,
+                                           std::function<int(int)> scale_px) {
+    SliderRowLayout l{};
+    l.label_w    = scale_px(78);
+    l.edit_x     = margin + l.label_w + scale_px(8);
+    l.value_w    = scale_px(60);
+    l.slider_w   = client_w - l.edit_x - margin - l.value_w - scale_px(4);
+    l.slider_h   = scale_px(26);
+    l.form_row_h = (btn_h > scale_px(32)) ? btn_h : scale_px(32);
+    l.label_y_off = (l.form_row_h - scale_px(20)) / 2;
+    return l;
+}
+
+inline void CreateSliderRow(HWND parent, const SliderRowLayout& l, int margin,
+                            int y, int label_id, const wchar_t* label_text,
+                            int slider_id, int value_id,
+                            std::function<int(int)> scale_px) {
+    CreateWindowExW(0, L"STATIC", label_text,
+        WS_CHILD | SS_LEFT, margin, y + l.label_y_off, l.label_w, scale_px(20),
+        parent, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(label_id)),
+        nullptr, nullptr);
+    CreateWindowExW(0, TRACKBAR_CLASSW, L"",
+        WS_CHILD | TBS_HORZ | TBS_AUTOTICKS,
+        l.edit_x, y, l.slider_w, l.slider_h,
+        parent, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(slider_id)),
+        nullptr, nullptr);
+    CreateWindowExW(0, L"STATIC", L"",
+        WS_CHILD | SS_CENTER,
+        l.edit_x + l.slider_w + scale_px(4), y + l.label_y_off, l.value_w, scale_px(20),
+        parent, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(value_id)),
+        nullptr, nullptr);
+}
+
+inline void InitSlider(HWND dlg, int slider_id, int value_id,
+                       int min_val, int max_val, int cur_val, bool is_memory) {
+    HWND slider = GetDlgItem(dlg, slider_id);
+    SendMessage(slider, TBM_SETRANGE, TRUE, MAKELPARAM(min_val, max_val));
+    SendMessage(slider, TBM_SETPOS, TRUE, cur_val);
+    HWND value_label = GetDlgItem(dlg, value_id);
+    SetWindowTextW(value_label, is_memory
+        ? FormatMemoryLabel(cur_val).c_str()
+        : FormatCpuLabel(cur_val).c_str());
+}
+
+inline void UpdateSliderLabel(HWND dlg, int slider_id, int value_id, bool is_memory) {
+    HWND slider = GetDlgItem(dlg, slider_id);
+    int val = static_cast<int>(SendMessage(slider, TBM_GETPOS, 0, 0));
+    SetWindowTextW(GetDlgItem(dlg, value_id), is_memory
+        ? FormatMemoryLabel(val).c_str()
+        : FormatCpuLabel(val).c_str());
+}
+
+inline bool HandleSliderScroll(HWND dlg, LPARAM lp,
+                               int mem_slider_id, int mem_value_id,
+                               int cpu_slider_id, int cpu_value_id) {
+    HWND slider = reinterpret_cast<HWND>(lp);
+    if (slider == GetDlgItem(dlg, mem_slider_id)) {
+        UpdateSliderLabel(dlg, mem_slider_id, mem_value_id, true);
+        return true;
+    }
+    if (slider == GetDlgItem(dlg, cpu_slider_id)) {
+        UpdateSliderLabel(dlg, cpu_slider_id, cpu_value_id, false);
+        return true;
+    }
+    return false;
 }
 
 inline std::string GetDlgText(HWND dlg, int id) {

@@ -1,4 +1,5 @@
 #include "manager/ui/create_vm_dialog.h"
+#include "manager/ui/dlg_builder.h"
 #include "manager/i18n.h"
 #include "manager/vm_forms.h"
 #include "manager/app_settings.h"
@@ -13,6 +14,7 @@
 #include <windowsx.h>
 
 #include <atomic>
+#include <functional>
 #include <iterator>
 #include <filesystem>
 #include <mutex>
@@ -22,11 +24,8 @@
 
 namespace fs = std::filesystem;
 
-static constexpr int kMemoryOptionsMb[] = {1024, 2048, 4096, 8192, 16384};
-static const char* kMemoryLabels[] = {"1 GB", "2 GB", "4 GB", "8 GB", "16 GB"};
-static constexpr int kCpuOptions[] = {1, 2, 4, 8, 16};
-static const char* kCpuLabels[] = {"1", "2", "4", "8", "16"};
-static constexpr int kNumOptions = 5;
+static int g_host_memory_gb = 0;
+static int g_host_cpus = 0;
 
 static const char* kSourcesUrl = "https://tenbox.ai/api/sources.json";
 
@@ -50,9 +49,11 @@ enum {
     IDC_NAME_LABEL = 108,
     IDC_NAME_EDIT = 109,
     IDC_MEMORY_LABEL = 110,
-    IDC_MEMORY_COMBO = 111,
+    IDC_MEMORY_SLIDER = 111,
+    IDC_MEMORY_VALUE = 119,
     IDC_CPU_LABEL = 112,
-    IDC_CPU_COMBO = 113,
+    IDC_CPU_SLIDER = 113,
+    IDC_CPU_VALUE = 120,
     IDC_NAT_CHECK = 114,
     IDC_BTN_BACK = 115,
     IDC_BTN_NEXT = 116,
@@ -220,12 +221,13 @@ static void ShowPage(DialogData* data, Page page) {
                                        IDC_BTN_RETRY, IDC_BTN_DELETE_CACHE};
     static const int download_ctrls[] = {IDC_PROGRESS, IDC_PROGRESS_TEXT};
     static const int confirm_ctrls[] = {IDC_NAME_LABEL, IDC_NAME_EDIT, IDC_MEMORY_LABEL,
-                                        IDC_MEMORY_COMBO, IDC_CPU_LABEL, IDC_CPU_COMBO,
+                                        IDC_MEMORY_SLIDER, IDC_MEMORY_VALUE,
+                                        IDC_CPU_LABEL, IDC_CPU_SLIDER, IDC_CPU_VALUE,
                                         IDC_NAT_CHECK};
 
     SetControlsVisible(dlg, select_ctrls, 8, false);
     SetControlsVisible(dlg, download_ctrls, 2, false);
-    SetControlsVisible(dlg, confirm_ctrls, 7, false);
+    SetControlsVisible(dlg, confirm_ctrls, 9, false);
 
     HWND btn_back = GetDlgItem(dlg, IDC_BTN_BACK);
     HWND btn_next = GetDlgItem(dlg, IDC_BTN_NEXT);
@@ -256,7 +258,7 @@ static void ShowPage(DialogData* data, Page page) {
         break;
 
     case Page::kConfirm: {
-        SetControlsVisible(dlg, confirm_ctrls, 7, true);
+        SetControlsVisible(dlg, confirm_ctrls, 9, true);
         SetWindowTextW(btn_next, i18n::tr_w(i18n::S::kDlgBtnCreate).c_str());
         EnableWindow(btn_next, TRUE);
         ShowWindow(btn_next, SW_SHOW);
@@ -266,17 +268,11 @@ static void ShowPage(DialogData* data, Page page) {
         auto records = data->mgr->ListVms();
         SetDlgItemTextW(dlg, IDC_NAME_EDIT, i18n::to_wide(NextAgentName(records)).c_str());
 
-        HWND mem_cb = GetDlgItem(dlg, IDC_MEMORY_COMBO);
-        SendMessage(mem_cb, CB_RESETCONTENT, 0, 0);
-        for (int i = 0; i < kNumOptions; ++i)
-            SendMessageW(mem_cb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(i18n::to_wide(kMemoryLabels[i]).c_str()));
-        SendMessage(mem_cb, CB_SETCURSEL, 2, 0);
+        int max_mem = g_host_memory_gb > 0 ? g_host_memory_gb : 16;
+        InitSlider(dlg, IDC_MEMORY_SLIDER, IDC_MEMORY_VALUE, 1, max_mem, kDefaultMemoryGb, true);
 
-        HWND cpu_cb = GetDlgItem(dlg, IDC_CPU_COMBO);
-        SendMessage(cpu_cb, CB_RESETCONTENT, 0, 0);
-        for (int i = 0; i < kNumOptions; ++i)
-            SendMessageW(cpu_cb, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(i18n::to_wide(kCpuLabels[i]).c_str()));
-        SendMessage(cpu_cb, CB_SETCURSEL, 2, 0);
+        int max_cpus = g_host_cpus > 0 ? g_host_cpus : 4;
+        InitSlider(dlg, IDC_CPU_SLIDER, IDC_CPU_VALUE, 1, max_cpus, kDefaultVcpus, false);
 
         CheckDlgButton(dlg, IDC_NAT_CHECK, BST_CHECKED);
         break;
@@ -673,6 +669,13 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
         }
         return 0;
 
+    case WM_HSCROLL:
+        if (HandleSliderScroll(dlg, lp,
+                IDC_MEMORY_SLIDER, IDC_MEMORY_VALUE,
+                IDC_CPU_SLIDER, IDC_CPU_VALUE))
+            return 0;
+        break;
+
     case WM_COMMAND:
         switch (LOWORD(wp)) {
         case IDC_SOURCE_COMBO:
@@ -834,8 +837,10 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
                 GetDlgItemTextW(dlg, IDC_NAME_EDIT, name_buf, static_cast<int>(std::size(name_buf)));
                 std::string req_name = i18n::wide_to_utf8(name_buf);
 
-                int mem_idx = static_cast<int>(SendMessage(GetDlgItem(dlg, IDC_MEMORY_COMBO), CB_GETCURSEL, 0, 0));
-                int cpu_idx = static_cast<int>(SendMessage(GetDlgItem(dlg, IDC_CPU_COMBO), CB_GETCURSEL, 0, 0));
+                int mem_gb = static_cast<int>(SendMessage(GetDlgItem(dlg, IDC_MEMORY_SLIDER), TBM_GETPOS, 0, 0));
+                int cpu_count = static_cast<int>(SendMessage(GetDlgItem(dlg, IDC_CPU_SLIDER), TBM_GETPOS, 0, 0));
+                if (mem_gb < 1) mem_gb = kDefaultMemoryGb;
+                if (cpu_count < 1) cpu_count = kDefaultVcpus;
 
                 std::string cache_dir = image_source::ImageCacheDir(
                     data->ImagesDir(), data->selected_image);
@@ -843,8 +848,8 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
                 VmCreateRequest req;
                 req.name = req_name;
                 req.storage_dir = settings::EffectiveVmStorageDir(data->mgr->app_settings());
-                req.memory_mb = (mem_idx >= 0 && mem_idx < kNumOptions) ? kMemoryOptionsMb[mem_idx] : 4096;
-                req.cpu_count = (cpu_idx >= 0 && cpu_idx < kNumOptions) ? kCpuOptions[cpu_idx] : 4;
+                req.memory_mb = mem_gb * 1024;
+                req.cpu_count = cpu_count;
                 req.nat_enabled = IsDlgButtonChecked(dlg, IDC_NAT_CHECK) == BST_CHECKED;
 
                 for (const auto& file : data->selected_image.files) {
@@ -1031,38 +1036,30 @@ bool ShowCreateVmDialog2(HWND parent, ManagerService& mgr, std::string* error) {
         margin, margin + scale_px(92), w - 2 * margin, scale_px(48),
         dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_PROGRESS_TEXT)), nullptr, nullptr);
 
-    int label_w = scale_px(78), edit_x = margin + label_w + scale_px(8), edit_w = w - edit_x - margin;
-    int form_row_h = (btn_h > scale_px(32)) ? btn_h : scale_px(32);
-    int label_y_off = (form_row_h - scale_px(20)) / 2;
+    auto layout = CalcSliderRowLayout(w, margin, btn_h, scale_px);
+    int edit_w = w - layout.edit_x - margin;
     int edit_h = scale_px(26);
-    int combo_drop_h = scale_px(220);
     int ctrl_y = margin;
     CreateWindowExW(0, L"STATIC", i18n::tr_w(i18n::S::kDlgLabelName).c_str(),
-        WS_CHILD | SS_LEFT, margin, ctrl_y + label_y_off, label_w, scale_px(20),
+        WS_CHILD | SS_LEFT, margin, ctrl_y + layout.label_y_off, layout.label_w, scale_px(20),
         dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_NAME_LABEL)), nullptr, nullptr);
     CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
-        WS_CHILD | ES_AUTOHSCROLL, edit_x, ctrl_y, edit_w, edit_h,
+        WS_CHILD | ES_AUTOHSCROLL, layout.edit_x, ctrl_y, edit_w, edit_h,
         dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_NAME_EDIT)), nullptr, nullptr);
-    ctrl_y += form_row_h;
+    ctrl_y += layout.form_row_h;
 
-    CreateWindowExW(0, L"STATIC", i18n::tr_w(i18n::S::kDlgLabelMemory).c_str(),
-        WS_CHILD | SS_LEFT, margin, ctrl_y + label_y_off, label_w, scale_px(20),
-        dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_MEMORY_LABEL)), nullptr, nullptr);
-    CreateWindowExW(0, L"COMBOBOX", L"",
-        WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL, edit_x, ctrl_y, edit_w, combo_drop_h,
-        dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_MEMORY_COMBO)), nullptr, nullptr);
-    ctrl_y += form_row_h;
+    CreateSliderRow(dlg, layout, margin, ctrl_y,
+        IDC_MEMORY_LABEL, i18n::tr_w(i18n::S::kDlgLabelMemory).c_str(),
+        IDC_MEMORY_SLIDER, IDC_MEMORY_VALUE, scale_px);
+    ctrl_y += layout.form_row_h;
 
-    CreateWindowExW(0, L"STATIC", i18n::tr_w(i18n::S::kDlgLabelVcpus).c_str(),
-        WS_CHILD | SS_LEFT, margin, ctrl_y + label_y_off, label_w, scale_px(20),
-        dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_CPU_LABEL)), nullptr, nullptr);
-    CreateWindowExW(0, L"COMBOBOX", L"",
-        WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL, edit_x, ctrl_y, edit_w, combo_drop_h,
-        dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_CPU_COMBO)), nullptr, nullptr);
-    ctrl_y += form_row_h;
+    CreateSliderRow(dlg, layout, margin, ctrl_y,
+        IDC_CPU_LABEL, i18n::tr_w(i18n::S::kDlgLabelVcpus).c_str(),
+        IDC_CPU_SLIDER, IDC_CPU_VALUE, scale_px);
+    ctrl_y += layout.form_row_h;
 
     CreateWindowExW(0, L"BUTTON", i18n::tr_w(i18n::S::kDlgEnableNat).c_str(),
-        WS_CHILD | BS_AUTOCHECKBOX, edit_x, ctrl_y + scale_px(4), edit_w, scale_px(22),
+        WS_CHILD | BS_AUTOCHECKBOX, layout.edit_x, ctrl_y + scale_px(4), edit_w, scale_px(22),
         dlg, reinterpret_cast<HMENU>(static_cast<UINT_PTR>(IDC_NAT_CHECK)), nullptr, nullptr);
 
     int btn_gap = scale_px(10);
@@ -1110,7 +1107,6 @@ bool ShowCreateVmDialog2(HWND parent, ManagerService& mgr, std::string* error) {
     auto set_combo_heights = [&](int id) {
         HWND combo = GetDlgItem(dlg, id);
         if (!combo) return;
-        // Keep combo slightly shorter than push buttons for visual balance.
         int combo_sel_h = btn_h - scale_px(4);
         if (combo_sel_h < scale_px(24)) combo_sel_h = scale_px(24);
         int combo_item_h = combo_sel_h - scale_px(4);
@@ -1119,8 +1115,10 @@ bool ShowCreateVmDialog2(HWND parent, ManagerService& mgr, std::string* error) {
         SendMessage(combo, CB_SETITEMHEIGHT, static_cast<WPARAM>(0), static_cast<LPARAM>(combo_item_h));
     };
     set_combo_heights(IDC_SOURCE_COMBO);
-    set_combo_heights(IDC_MEMORY_COMBO);
-    set_combo_heights(IDC_CPU_COMBO);
+
+    g_host_memory_gb = GetHostMemoryGb();
+    if (g_host_memory_gb < 1) g_host_memory_gb = 16;
+    g_host_cpus = GetHostLogicalCpus();
 
     ShowPage(&data, Page::kSelectImage);
     FetchSources(&data);
