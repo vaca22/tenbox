@@ -1,6 +1,7 @@
 #include "manager/ui/win32_ui_shell.h"
 #include "manager/ui/win32_dialogs.h"
 #include "manager/ui/create_vm_dialog.h"
+#include "manager/ui/settings_dialog.h"
 #include "manager/ui/win32_display_panel.h"
 #include "manager/ui/info_tab.h"
 #include "manager/ui/console_tab.h"
@@ -54,6 +55,7 @@ enum CmdId : UINT {
     IDM_WEBSITE        = 1020,
     IDM_CHECK_UPDATE  = 1021,
     IDM_ABOUT         = 1022,
+    IDM_SETTINGS      = 1025,
 };
 
 // ── Control IDs ──
@@ -231,6 +233,8 @@ static HMENU BuildMenuBar(bool show_toolbar, bool adaptive_display) {
 
     HMENU file_menu = CreatePopupMenu();
     AppendMenuW(file_menu, MF_STRING, IDM_NEW_VM, i18n::tr_w(S::kMenuNewVm).c_str());
+    AppendMenuW(file_menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(file_menu, MF_STRING, IDM_SETTINGS, i18n::tr_w(S::kMenuSettings).c_str());
     AppendMenuW(file_menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(file_menu, MF_STRING, IDM_EXIT, i18n::tr_w(S::kMenuExit).c_str());
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file_menu), i18n::tr_w(S::kMenuManager).c_str());
@@ -710,6 +714,9 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        case IDM_SETTINGS:
+            ShowSettingsDialog(hwnd, shell->manager_);
+            return 0;
         case IDM_EXIT:
             SendMessage(hwnd, WM_CLOSE, 0, 0);
             return 0;

@@ -122,6 +122,10 @@ struct DialogData {
                    last_progress_ui_tick(0), last_progress_ui_file_index(-1),
                    last_progress_ui_percent(-1),
                    speed_sample_tick(0), speed_sample_bytes(0), smooth_speed_bps(0) {}
+
+    std::string ImagesDir() const {
+        return settings::EffectiveImageCacheDir(mgr->app_settings(), mgr->data_dir());
+    }
 };
 
 static std::string NextAgentName(const std::vector<VmRecord>& records) {
@@ -508,7 +512,7 @@ static void StartDownload(DialogData* data) {
     HWND dlg = data->dlg;
     data->download_thread = std::thread([data, dlg]() {
         std::string cache_dir = image_source::ImageCacheDir(
-            data->mgr->data_dir(), data->selected_image);
+            data->ImagesDir(), data->selected_image);
 
         std::error_code ec;
         fs::create_directories(cache_dir, ec);
@@ -659,7 +663,7 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
 
     case WM_DOWNLOAD_COMPLETE:
         if (wp == 1) {
-            data->cached_images = image_source::GetCachedImages(data->mgr->data_dir());
+            data->cached_images = image_source::GetCachedImages(data->ImagesDir());
             ShowPage(data, Page::kConfirm);
         } else {
             if (!data->download_error.empty() && data->download_error != "Cancelled") {
@@ -753,7 +757,7 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
                 MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
             if (ans != IDYES) return 0;
 
-            std::string cache_dir = image_source::ImageCacheDir(data->mgr->data_dir(), cached_img);
+            std::string cache_dir = image_source::ImageCacheDir(data->ImagesDir(), cached_img);
             std::error_code ec;
             fs::remove_all(cache_dir, ec);
             if (ec) {
@@ -762,7 +766,7 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
                 return 0;
             }
 
-            data->cached_images = image_source::GetCachedImages(data->mgr->data_dir());
+            data->cached_images = image_source::GetCachedImages(data->ImagesDir());
             data->selected_index = -1;
             RefreshImageList(data);
             UpdateDescriptionText(data);
@@ -811,7 +815,7 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
                             if (!is_cached) {
                                 if (actual_idx == online_idx) {
                                     data->selected_image = img;
-                                    if (image_source::IsImageCached(data->mgr->data_dir(), img)) {
+                                    if (image_source::IsImageCached(data->ImagesDir(), img)) {
                                         ShowPage(data, Page::kConfirm);
                                     } else {
                                         StartDownload(data);
@@ -834,10 +838,11 @@ static LRESULT CALLBACK DlgSubclassProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp
                 int cpu_idx = static_cast<int>(SendMessage(GetDlgItem(dlg, IDC_CPU_COMBO), CB_GETCURSEL, 0, 0));
 
                 std::string cache_dir = image_source::ImageCacheDir(
-                    data->mgr->data_dir(), data->selected_image);
+                    data->ImagesDir(), data->selected_image);
 
                 VmCreateRequest req;
                 req.name = req_name;
+                req.storage_dir = settings::EffectiveVmStorageDir(data->mgr->app_settings());
                 req.memory_mb = (mem_idx >= 0 && mem_idx < kNumOptions) ? kMemoryOptionsMb[mem_idx] : 4096;
                 req.cpu_count = (cpu_idx >= 0 && cpu_idx < kNumOptions) ? kCpuOptions[cpu_idx] : 4;
                 req.nat_enabled = IsDlgButtonChecked(dlg, IDC_NAT_CHECK) == BST_CHECKED;
@@ -952,7 +957,7 @@ bool ShowCreateVmDialog2(HWND parent, ManagerService& mgr, std::string* error) {
     data.dlg = dlg;
     SetWindowSubclass(dlg, DlgSubclassProc, 1, reinterpret_cast<DWORD_PTR>(&data));
 
-    data.cached_images = image_source::GetCachedImages(data.mgr->data_dir());
+    data.cached_images = image_source::GetCachedImages(data.ImagesDir());
 
     RECT rc;
     GetClientRect(dlg, &rc);

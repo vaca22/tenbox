@@ -236,6 +236,24 @@ enum class S {
     kUpdateInstalling,
     kUpdateLatest,
 
+    // Settings dialog
+    kMenuSettings,
+    kDlgSettings,
+    kSettingsVmStorageDir,
+    kSettingsImageCacheDir,
+    kSettingsDefault,
+    kSettingsBrowse,
+    kSettingsReset,
+    kSettingsCacheSize,
+    kSettingsClearCache,
+    kSettingsCacheCleared,
+    kSettingsConfirmClearTitle,
+    kSettingsConfirmClearMsg,
+    kSettingsOldCacheTitle,
+    kSettingsOldCacheMsg,
+    kSettingsMigrate,
+    kSettingsDelete,
+
     kCount  // Must be last
 };
 

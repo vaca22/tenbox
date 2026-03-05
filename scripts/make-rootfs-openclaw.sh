@@ -579,11 +579,16 @@ echo "Installing OpenClaw..."
 su - $USER_NAME -c 'bash /tmp/openclaw_install.sh --no-onboard'
 rm -f /tmp/openclaw_install.sh
 
+# Ensure npm global bin is in PATH for future sessions
+if ! grep -q 'npm-global/bin' /home/$USER_NAME/.bashrc 2>/dev/null; then
+    echo 'export PATH="\$HOME/.npm-global/bin:\$PATH"' >> /home/$USER_NAME/.bashrc
+fi
 EOF
 
     # Extract version for output filename
     OPENCLAW_VERSION=$(sudo chroot "$MOUNT_DIR" su - "$USER_NAME" -c \
-        'npm ls -g openclaw 2>/dev/null' | grep 'openclaw@' | sed 's/.*openclaw@//' || true)
+        'PATH="$HOME/.npm-global/bin:$PATH" npm ls -g openclaw 2>/dev/null' \
+        | grep 'openclaw@' | sed 's/.*openclaw@//' || true)
     if [ -n "$OPENCLAW_VERSION" ]; then
         echo "  OpenClaw version: $OPENCLAW_VERSION"
     else
@@ -592,21 +597,75 @@ EOF
 }
 
 do_config_openclaw() {
+    # Write config script to avoid shell escaping issues with nested su/heredoc
+    sudo tee "$MOUNT_DIR/tmp/openclaw_config.sh" > /dev/null << 'SCRIPT'
+#!/bin/bash
+set -e
+export PATH="$HOME/.npm-global/bin:$PATH"
+openclaw config set tools.profile full
+openclaw config set gateway.mode local
+openclaw config set gateway.bind lan
+openclaw config set gateway.auth.mode token
+openclaw config set gateway.auth.token tenbox
+openclaw config set gateway.controlUi.allowInsecureAuth true
+openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true
+SCRIPT
+    sudo chmod +x "$MOUNT_DIR/tmp/openclaw_config.sh"
+
     sudo chroot "$MOUNT_DIR" /bin/bash -e << EOF
+# Configure openclaw settings
 if [ -f /home/$USER_NAME/.openclaw/openclaw.json ] && \
    grep -q '"profile"' /home/$USER_NAME/.openclaw/openclaw.json 2>/dev/null; then
-    echo "  OpenClaw already configured"
-    exit 0
+    echo "  OpenClaw config already set"
+else
+    echo "Configuring OpenClaw..."
+    su - $USER_NAME -c 'bash /tmp/openclaw_config.sh'
 fi
+rm -f /tmp/openclaw_config.sh
 
-echo "Configuring OpenClaw..."
-su - $USER_NAME -c 'openclaw config set tools.profile full'
-su - $USER_NAME -c 'openclaw config set gateway.bind lan'
-su - $USER_NAME -c 'openclaw config set gateway.auth.mode token'
-su - $USER_NAME -c 'openclaw config set gateway.auth.token tenbox'
-su - $USER_NAME -c 'openclaw config set gateway.controlUi.allowInsecureAuth true'
-su - $USER_NAME -c 'openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true'
-su - $USER_NAME -c 'openclaw daemon install'
+# Install systemd user service manually (openclaw daemon install needs running systemd)
+USER_HOME=/home/$USER_NAME
+UNIT_DIR=\$USER_HOME/.config/systemd/user
+
+if [ -f "\$UNIT_DIR/openclaw-gateway.service" ]; then
+    echo "  OpenClaw systemd service already installed"
+else
+    echo "Installing OpenClaw systemd service..."
+    mkdir -p "\$UNIT_DIR"
+
+    OC_VERSION=\$(node \$USER_HOME/.npm-global/lib/node_modules/openclaw/dist/index.js --version 2>/dev/null || echo "unknown")
+    OC_TOKEN=\$(grep -o '"token":"[^"]*"' \$USER_HOME/.openclaw/openclaw.json 2>/dev/null | head -1 | cut -d'"' -f4 || echo "tenbox")
+
+    cat > "\$UNIT_DIR/openclaw-gateway.service" << UNIT
+[Unit]
+Description=OpenClaw Gateway (v\$OC_VERSION)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node \$USER_HOME/.npm-global/lib/node_modules/openclaw/dist/index.js gateway --port 18789
+Restart=always
+RestartSec=5
+KillMode=process
+Environment=HOME=\$USER_HOME
+Environment=TMPDIR=/tmp
+Environment=PATH=\$USER_HOME/.local/bin:\$USER_HOME/.npm-global/bin:\$USER_HOME/bin:/usr/local/bin:/usr/bin:/bin
+Environment=OPENCLAW_GATEWAY_PORT=18789
+Environment=OPENCLAW_GATEWAY_TOKEN=\$OC_TOKEN
+Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-gateway.service
+Environment=OPENCLAW_SERVICE_MARKER=openclaw
+Environment=OPENCLAW_SERVICE_KIND=gateway
+Environment=OPENCLAW_SERVICE_VERSION=\$OC_VERSION
+
+[Install]
+WantedBy=default.target
+UNIT
+    chown -R $USER_NAME:$USER_NAME \$USER_HOME/.config
+
+    # Enable the service (create symlink since systemctl --user is unavailable in chroot)
+    mkdir -p "\$UNIT_DIR/default.target.wants"
+    ln -sf ../openclaw-gateway.service "\$UNIT_DIR/default.target.wants/openclaw-gateway.service"
+fi
 EOF
 }
 
@@ -772,7 +831,8 @@ do_cleanup_chroot() {
     # Detect version from chroot if not already known (e.g. on resume)
     if [ -z "$OPENCLAW_VERSION" ]; then
         OPENCLAW_VERSION=$(sudo chroot "$MOUNT_DIR" su - "$USER_NAME" -c \
-            'npm ls -g openclaw 2>/dev/null' | grep 'openclaw@' | sed 's/.*openclaw@//' || true)
+            'PATH="$HOME/.npm-global/bin:$PATH" npm ls -g openclaw 2>/dev/null' \
+            | grep 'openclaw@' | sed 's/.*openclaw@//' || true)
         [ -n "$OPENCLAW_VERSION" ] && echo "  Detected OpenClaw version: $OPENCLAW_VERSION"
     fi
 

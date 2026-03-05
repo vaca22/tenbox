@@ -14,6 +14,7 @@ add_executable(tenbox-manager WIN32
     ${CMAKE_SOURCE_DIR}/src/manager/ui/shared_folders_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/manager/ui/update_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/manager/ui/port_forward_dialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/manager/ui/settings_dialog.cpp
     ${CMAKE_SOURCE_DIR}/src/manager/ui/win32_display_panel.cpp
     ${CMAKE_SOURCE_DIR}/src/manager/ui/info_tab.cpp
     ${CMAKE_SOURCE_DIR}/src/manager/ui/console_tab.cpp

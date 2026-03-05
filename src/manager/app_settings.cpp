@@ -44,6 +44,18 @@ std::string DefaultVmStorageDir() {
     return base.empty() ? std::string{} : base + "\\vms";
 }
 
+std::string DefaultImageCacheDir(const std::string& data_dir) {
+    return data_dir.empty() ? std::string{} : (fs::path(data_dir) / "images").string();
+}
+
+std::string EffectiveVmStorageDir(const AppSettings& s) {
+    return s.vm_storage_dir.empty() ? DefaultVmStorageDir() : s.vm_storage_dir;
+}
+
+std::string EffectiveImageCacheDir(const AppSettings& s, const std::string& data_dir) {
+    return s.image_cache_dir.empty() ? DefaultImageCacheDir(data_dir) : s.image_cache_dir;
+}
+
 std::string GenerateUuid() {
     // Use Windows CryptGenRandom for UUID v4
     HCRYPTPROV prov = 0;
@@ -98,6 +110,14 @@ AppSettings LoadSettings(const std::string& data_dir) {
         if (j.contains("adaptive_display") && j["adaptive_display"].is_boolean()) {
             s.adaptive_display = j["adaptive_display"].get<bool>();
         }
+        if (j.contains("vm_storage_dir") && j["vm_storage_dir"].is_string()) {
+            auto v = j["vm_storage_dir"].get<std::string>();
+            if (!v.empty()) s.vm_storage_dir = v;
+        }
+        if (j.contains("image_cache_dir") && j["image_cache_dir"].is_string()) {
+            auto v = j["image_cache_dir"].get<std::string>();
+            if (!v.empty()) s.image_cache_dir = v;
+        }
         if (j.contains("vm_paths") && j["vm_paths"].is_array()) {
             auto default_storage = DefaultVmStorageDir();
             for (auto& item : j["vm_paths"]) {
@@ -142,6 +162,10 @@ void SaveSettings(const std::string& data_dir, const AppSettings& s) {
     j["show_toolbar"]     = s.show_toolbar;
     j["adaptive_display"] = s.adaptive_display;
     j["vm_paths"]         = vm_paths_json;
+    if (!s.vm_storage_dir.empty())
+        j["vm_storage_dir"] = s.vm_storage_dir;
+    if (!s.image_cache_dir.empty())
+        j["image_cache_dir"] = s.image_cache_dir;
 
     auto path = fs::path(data_dir) / "settings.json";
     std::ofstream ofs(path, std::ios::trunc);

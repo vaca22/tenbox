@@ -37,14 +37,15 @@ std::vector<ImageEntry> ParseImages(const std::string& json);
 std::vector<ImageEntry> FilterImages(const std::vector<ImageEntry>& images,
                                      const std::string& current_app_version);
 
-// Check if image is fully cached locally (all files present, no .tmp files)
-bool IsImageCached(const std::string& data_dir, const ImageEntry& entry);
+// Check if image is fully cached locally (all files present, no .tmp files).
+// images_dir is the base images directory (e.g. "{data_dir}/images" or a custom path).
+bool IsImageCached(const std::string& images_dir, const ImageEntry& entry);
 
-// Get cache directory path for an image: {data_dir}/images/{id}-{version}/
-std::string ImageCacheDir(const std::string& data_dir, const ImageEntry& entry);
+// Get cache directory path for an image: {images_dir}/{id}-{version}/
+std::string ImageCacheDir(const std::string& images_dir, const ImageEntry& entry);
 
-// Get list of locally cached images by scanning {data_dir}/images/
-std::vector<ImageEntry> GetCachedImages(const std::string& data_dir);
+// Get list of locally cached images by scanning images_dir.
+std::vector<ImageEntry> GetCachedImages(const std::string& images_dir);
 
 // Save image metadata to cache dir as image.json
 void SaveImageMeta(const std::string& cache_dir, const ImageEntry& entry);

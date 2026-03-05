@@ -266,7 +266,7 @@ bool ManagerService::CloneVm(const std::string& vm_id, std::string* error) {
     };
 
     std::string new_uuid = settings::GenerateUuid();
-    std::string parent_dir = fs::path(src_dir).parent_path().string();
+    std::string parent_dir = settings::EffectiveVmStorageDir(settings_);
     std::string new_dir = (fs::path(parent_dir) / new_uuid).string();
 
     // Copy the entire VM directory

@@ -170,6 +170,24 @@ static const std::unordered_map<S, const char*> kStringsEn = {
     {S::kUpdateDownloadFailed, "Failed to download update: %s"},
     {S::kUpdateInstalling, "Installing update..."},
     {S::kUpdateLatest, "You are running the latest version."},
+
+    // Settings dialog
+    {S::kMenuSettings, "Settings..."},
+    {S::kDlgSettings, "Settings"},
+    {S::kSettingsVmStorageDir, "VM Storage Directory:"},
+    {S::kSettingsImageCacheDir, "Image Cache Directory:"},
+    {S::kSettingsDefault, "(Default: %s)"},
+    {S::kSettingsBrowse, "Browse..."},
+    {S::kSettingsReset, "Reset"},
+    {S::kSettingsCacheSize, "Cache size: %s (%d images)"},
+    {S::kSettingsClearCache, "Clear Cache"},
+    {S::kSettingsCacheCleared, "Image cache cleared."},
+    {S::kSettingsConfirmClearTitle, "Clear Image Cache"},
+    {S::kSettingsConfirmClearMsg, "Delete all cached images (%s)?\nDownloaded files will be removed."},
+    {S::kSettingsOldCacheTitle, "Old Image Cache"},
+    {S::kSettingsOldCacheMsg, "Old cache at:\n%s\nuses %s.\n\nMigrate to the new directory?\n(No = delete old cache)"},
+    {S::kSettingsMigrate, "Migrate"},
+    {S::kSettingsDelete, "Delete"},
 };
 
 // Simplified Chinese strings; each key explicitly bound (no order dependency)
@@ -331,6 +349,24 @@ static const std::unordered_map<S, const char*> kStringsZhCN = {
     {S::kUpdateDownloadFailed, "下载更新失败：%s"},
     {S::kUpdateInstalling, "正在安装更新..."},
     {S::kUpdateLatest, "当前已是最新版本。"},
+
+    // Settings dialog
+    {S::kMenuSettings, "设置..."},
+    {S::kDlgSettings, "设置"},
+    {S::kSettingsVmStorageDir, "VM 存储目录:"},
+    {S::kSettingsImageCacheDir, "镜像缓存目录:"},
+    {S::kSettingsDefault, "(默认: %s)"},
+    {S::kSettingsBrowse, "浏览..."},
+    {S::kSettingsReset, "重置"},
+    {S::kSettingsCacheSize, "缓存占用: %s (%d 个镜像)"},
+    {S::kSettingsClearCache, "清除缓存"},
+    {S::kSettingsCacheCleared, "镜像缓存已清除。"},
+    {S::kSettingsConfirmClearTitle, "清除镜像缓存"},
+    {S::kSettingsConfirmClearMsg, "确认删除所有缓存镜像 (%s) 吗？\n已下载的文件将被移除。"},
+    {S::kSettingsOldCacheTitle, "旧镜像缓存"},
+    {S::kSettingsOldCacheMsg, "旧缓存目录:\n%s\n占用 %s。\n\n是否迁移到新目录？\n（否 = 删除旧缓存）"},
+    {S::kSettingsMigrate, "迁移"},
+    {S::kSettingsDelete, "删除"},
 };
 
 void InitLanguage() {

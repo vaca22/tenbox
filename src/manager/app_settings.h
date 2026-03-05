@@ -9,6 +9,7 @@ namespace settings {
 
 std::string GetDataDir();
 std::string DefaultVmStorageDir();
+std::string DefaultImageCacheDir(const std::string& data_dir);
 std::string GenerateUuid();
 
 struct WindowGeometry {
@@ -21,7 +22,13 @@ struct AppSettings {
     std::vector<std::string> vm_paths;
     bool show_toolbar = true;
     bool adaptive_display = true;
+    std::string vm_storage_dir;     // empty = DefaultVmStorageDir()
+    std::string image_cache_dir;    // empty = DefaultImageCacheDir(data_dir)
 };
+
+// Resolve effective directories (returns custom if set, otherwise default).
+std::string EffectiveVmStorageDir(const AppSettings& s);
+std::string EffectiveImageCacheDir(const AppSettings& s, const std::string& data_dir);
 
 AppSettings LoadSettings(const std::string& data_dir);
 void SaveSettings(const std::string& data_dir, const AppSettings& s);

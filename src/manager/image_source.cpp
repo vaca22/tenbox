@@ -110,12 +110,12 @@ std::vector<ImageEntry> FilterImages(const std::vector<ImageEntry>& images,
     return result;
 }
 
-std::string ImageCacheDir(const std::string& data_dir, const ImageEntry& entry) {
-    return (fs::path(data_dir) / "images" / entry.CacheId()).string();
+std::string ImageCacheDir(const std::string& images_dir, const ImageEntry& entry) {
+    return (fs::path(images_dir) / entry.CacheId()).string();
 }
 
-bool IsImageCached(const std::string& data_dir, const ImageEntry& entry) {
-    std::string cache_dir = ImageCacheDir(data_dir, entry);
+bool IsImageCached(const std::string& images_dir, const ImageEntry& entry) {
+    std::string cache_dir = ImageCacheDir(images_dir, entry);
     if (!fs::exists(cache_dir) || !fs::is_directory(cache_dir)) {
         return false;
     }
@@ -133,9 +133,8 @@ bool IsImageCached(const std::string& data_dir, const ImageEntry& entry) {
     return true;
 }
 
-std::vector<ImageEntry> GetCachedImages(const std::string& data_dir) {
+std::vector<ImageEntry> GetCachedImages(const std::string& images_dir) {
     std::vector<ImageEntry> result;
-    fs::path images_dir = fs::path(data_dir) / "images";
 
     if (!fs::exists(images_dir) || !fs::is_directory(images_dir)) {
         return result;
@@ -146,7 +145,7 @@ std::vector<ImageEntry> GetCachedImages(const std::string& data_dir) {
 
         ImageEntry img;
         if (LoadImageMeta(entry.path().string(), img)) {
-            if (IsImageCached(data_dir, img)) {
+            if (IsImageCached(images_dir, img)) {
                 result.push_back(std::move(img));
             }
         }
