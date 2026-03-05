@@ -1,8 +1,8 @@
 {
-  "latest_version": "0.2.2",
+  "latest_version": "0.2.5",
   "min_supported_version": "0.1.0",
-  "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox_0.2.2.msi",
-  "release_notes": "增加端口转发\n修复AMD CPU虚拟化兼容性问题\n支持开关自适应大小\n修复DNS获取失败问题",
-  "release_date": "2026-03-03",
+  "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox_0.2.5.msi",
+  "release_notes": "增加克隆功能\n修复端口转发、共享文件夹数字动态更新问题\n增加虚拟化禁用提醒\n增加设置界面改变默认目录位置\n修复1903之前中文乱码问题\n共享、转发对话框增加打开按钮",
+  "release_date": "2026-03-05",
   "sha256": ""
 }
