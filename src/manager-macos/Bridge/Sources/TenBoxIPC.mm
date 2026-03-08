@@ -36,6 +36,7 @@ static std::string HexDecode(const std::string& hex) {
 @implementation TBIpcClient {
     std::unique_ptr<ipc::UnixSocketConnection> _connection;
     std::mutex _sendLock;
+    std::mutex _disconnectLock;
     std::atomic<bool> _running;
     std::thread _recvThread;
     // Console batching: accumulate text, flush on a coalesced timer
@@ -60,6 +61,7 @@ static std::string HexDecode(const std::string& hex) {
 }
 
 - (void)disconnect {
+    std::lock_guard<std::mutex> lock(_disconnectLock);
     _running = false;
     if (_connection) {
         _connection->Close();

@@ -47,7 +47,11 @@ class IpcClientWrapper: ObservableObject {
         return result
     }
 
+    private var disconnecting = false
+
     func disconnect() {
+        guard !disconnecting else { return }
+        disconnecting = true
         isConnected = false
         DispatchQueue.global(qos: .userInitiated).async { [client] in
             client.disconnect()

@@ -3,7 +3,7 @@ import AppKit
 
 @main
 struct TenBoxApp: App {
-    @StateObject private var appState = AppState()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -51,13 +51,13 @@ struct TenBoxApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(appState)
+                .environmentObject(appDelegate.appState)
                 .frame(minWidth: 800, minHeight: 500)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New VM...") {
-                    appState.showCreateVmDialog = true
+                    appDelegate.appState.showCreateVmDialog = true
                 }
                 .keyboardShortcut("n")
             }
@@ -72,7 +72,7 @@ class AppState: ObservableObject {
     @Published var showEditVmDialog = false
 
     private var bridge = TenBoxBridgeWrapper()
-    private var activeSessions: [String: WeakRef<VmSession>] = [:]
+    private var activeSessions: [String: VmSession] = [:]
     private var stateObserver: NSObjectProtocol?
 
     init() {
@@ -83,11 +83,10 @@ class AppState: ObservableObject {
         ) { [weak self] note in
             guard let self = self else { return }
             self.refreshVmList()
-            if let vmId = note.object as? String,
-               let session = self.activeSessions[vmId]?.value {
+            if let vmId = note.object as? String {
                 let newState = self.vms.first(where: { $0.id == vmId })?.state ?? .stopped
                 if newState == .stopped || newState == .crashed {
-                    session.disconnect()
+                    self.removeSession(for: vmId)
                 }
             }
         }
@@ -99,11 +98,19 @@ class AppState: ObservableObject {
         }
     }
 
-    func registerSession(_ session: VmSession, for vmId: String) {
-        activeSessions[vmId] = WeakRef(session)
+    func getOrCreateSession(for vmId: String) -> VmSession {
+        if let existing = activeSessions[vmId] {
+            return existing
+        }
+        let session = VmSession(vmId: vmId)
+        activeSessions[vmId] = session
+        return session
     }
 
-    func unregisterSession(for vmId: String) {
+    func removeSession(for vmId: String) {
+        if let session = activeSessions[vmId] {
+            session.disconnect()
+        }
         activeSessions.removeValue(forKey: vmId)
     }
 
@@ -122,6 +129,7 @@ class AppState: ObservableObject {
     }
 
     func deleteVm(id: String) {
+        removeSession(for: id)
         bridge.deleteVm(id: id)
         refreshVmList()
     }
@@ -129,25 +137,24 @@ class AppState: ObservableObject {
     func startVm(id: String) {
         bridge.startVm(id: id)
         refreshVmList()
-        // Trigger IPC connection for any active session watching this VM
-        if let session = activeSessions[id]?.value {
+        if let session = activeSessions[id] {
             session.connectIfNeeded()
         }
     }
 
     func stopVm(id: String) {
-        if let session = activeSessions[id]?.value {
+        if let session = activeSessions[id] {
             if session.ipcClient.isConnected {
                 session.ipcClient.sendControl("stop")
             }
-            session.disconnect()
         }
+        removeSession(for: id)
         bridge.stopVm(id: id)
         refreshVmList()
     }
 
     func rebootVm(id: String) {
-        if let session = activeSessions[id]?.value, session.ipcClient.isConnected {
+        if let session = activeSessions[id], session.ipcClient.isConnected {
             session.ipcClient.sendControl("reboot")
         } else {
             bridge.rebootVm(id: id)
@@ -155,7 +162,7 @@ class AppState: ObservableObject {
     }
 
     func shutdownVm(id: String) {
-        if let session = activeSessions[id]?.value, session.ipcClient.isConnected {
+        if let session = activeSessions[id], session.ipcClient.isConnected {
             session.ipcClient.sendControl("shutdown")
         } else {
             bridge.shutdownVm(id: id)
@@ -163,7 +170,15 @@ class AppState: ObservableObject {
     }
 }
 
-private class WeakRef<T: AnyObject> {
-    weak var value: T?
-    init(_ value: T) { self.value = value }
+class AppDelegate: NSObject, NSApplicationDelegate {
+    let appState = AppState()
+    private let bridge = TenBoxBridgeWrapper()
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        return false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        bridge.stopAllVms()
+    }
 }

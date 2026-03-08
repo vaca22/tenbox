@@ -40,6 +40,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)rebootVmWithId:(NSString *)vmId;
 - (void)shutdownVmWithId:(NSString *)vmId;
 
+// Terminate all running VM processes. Call on app exit.
+- (void)stopAllVms;
+
 // Wait for the runtime process to connect (up to timeout seconds).
 - (BOOL)waitForRuntimeConnection:(NSString *)vmId timeout:(NSTimeInterval)timeout;
 

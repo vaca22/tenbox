@@ -9,7 +9,7 @@ struct ContentView: View {
         } detail: {
             if let vmId = appState.selectedVmId,
                let vm = appState.vms.first(where: { $0.id == vmId }) {
-                VmDetailView(vm: vm)
+                VmDetailView(vm: vm, appState: appState)
             } else {
                 Text("Select a VM")
                     .font(.title2)

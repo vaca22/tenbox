@@ -59,6 +59,10 @@ class TenBoxBridgeWrapper {
         bridge.shutdownVm(withId: id)
     }
 
+    func stopAllVms() {
+        bridge.stopAllVms()
+    }
+
     func waitForRuntimeConnection(vmId: String, timeout: TimeInterval = 30) -> Bool {
         return bridge.wait(forRuntimeConnection: vmId, timeout: timeout)
     }

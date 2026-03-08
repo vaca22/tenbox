@@ -14,11 +14,17 @@ static std::unordered_map<std::string, std::unique_ptr<ipc::UnixSocketConnection
 static std::unordered_map<std::string, std::thread> g_accept_threads;
 static std::unordered_map<std::string, NSTask*> g_tasks;
 
-// Ensure all background accept threads are detached before global destructors
-// run.  A joinable std::thread that is destructed calls std::terminate.
+// Last-resort cleanup: terminate any remaining child processes and detach
+// accept threads before global destructors run.
 __attribute__((destructor))
-static void CleanupAcceptThreads() {
+static void CleanupOnExit() {
     std::lock_guard<std::mutex> lock(g_server_mutex);
+    for (auto& [_, task] : g_tasks) {
+        if (task.isRunning) {
+            [task terminate];
+        }
+    }
+    g_tasks.clear();
     for (auto& [_, t] : g_accept_threads) {
         if (t.joinable()) t.detach();
     }
@@ -441,6 +447,37 @@ static NSString* GetVmsDir() {
 
 - (void)shutdownVmWithId:(NSString *)vmId {
     SendControlCommand(vmId.UTF8String, "shutdown");
+}
+
+- (void)stopAllVms {
+    // Collect running VM IDs, then send stop commands without holding the lock
+    // (SendControlCommand acquires g_server_mutex internally).
+    std::vector<std::string> runningIds;
+    {
+        std::lock_guard<std::mutex> lock(g_server_mutex);
+        for (auto& [vmIdStr, _] : g_tasks) {
+            runningIds.push_back(vmIdStr);
+        }
+    }
+
+    for (auto& vmIdStr : runningIds) {
+        SendControlCommand(vmIdStr, "stop");
+    }
+
+    std::lock_guard<std::mutex> lock(g_server_mutex);
+    for (auto& [_, task] : g_tasks) {
+        if (task.isRunning) {
+            [task terminate];
+            [task waitUntilExit];
+        }
+    }
+    g_tasks.clear();
+    g_accepted.clear();
+    g_servers.clear();
+    for (auto& [_, t] : g_accept_threads) {
+        if (t.joinable()) t.detach();
+    }
+    g_accept_threads.clear();
 }
 
 @end

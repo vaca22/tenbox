@@ -166,11 +166,11 @@ class VmSession: ObservableObject {
 struct VmDetailView: View {
     let vm: VmInfo
     @EnvironmentObject var appState: AppState
-    @StateObject private var session: VmSession
+    @ObservedObject private var session: VmSession
 
-    init(vm: VmInfo) {
+    init(vm: VmInfo, appState: AppState) {
         self.vm = vm
-        _session = StateObject(wrappedValue: VmSession(vmId: vm.id))
+        self.session = appState.getOrCreateSession(for: vm.id)
     }
 
     var body: some View {
@@ -189,13 +189,9 @@ struct VmDetailView: View {
         }
         .padding()
         .onAppear {
-            appState.registerSession(session, for: vm.id)
             if vm.state == .running {
                 session.connectIfNeeded()
             }
-        }
-        .onDisappear {
-            appState.unregisterSession(for: vm.id)
         }
         .onChange(of: vm.state) { _, newState in
             if newState == .running {
