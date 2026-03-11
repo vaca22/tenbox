@@ -14,7 +14,6 @@ using json = nlohmann::json;
 std::vector<ImageSource> DefaultSources() {
     return {
         {"China Mainland", "https://tenbox.ai/api/images.json"},
-        {"China Mainland 2", "https://baidufsadfsadf.io/api/images.json"},
     };
 }
 
