@@ -93,8 +93,13 @@ bool NetBackend::Start(VirtioNetDevice* dev,
                        const std::vector<PortForward>& forwards) {
     virtio_net_ = dev;
     irq_callback_ = std::move(irq_cb);
-    for (auto& f : forwards)
-        port_forwards_.emplace_back(PfEntry{this, f.host_port, f.guest_port});
+    for (const auto& f : forwards) {
+        port_forwards_.emplace_back();
+        auto& pf = port_forwards_.back();
+        pf.backend = this;
+        pf.host_port = f.host_port;
+        pf.guest_port = f.guest_port;
+    }
 
     running_ = true;
     net_thread_ = std::thread(&NetBackend::NetworkThread, this);
@@ -275,7 +280,16 @@ void NetBackend::OnStopSignal(uv_async_t* handle) {
         e->poll.Close();
         self->CloseHostSocket(e.get());
         if (e->listen_pcb) { tcp_close(static_cast<struct tcp_pcb*>(e->listen_pcb)); e->listen_pcb = nullptr; }
-        if (e->conn_pcb) { tcp_abort(static_cast<struct tcp_pcb*>(e->conn_pcb)); e->conn_pcb = nullptr; }
+        if (e->conn_pcb) {
+            if (e->proto == IPPROTO_TCP) {
+                auto* pcb = static_cast<struct tcp_pcb*>(e->conn_pcb);
+                tcp_arg(pcb, nullptr);
+                tcp_recv(pcb, nullptr);
+                tcp_err(pcb, nullptr);
+                tcp_abort(pcb);
+            }
+            e->conn_pcb = nullptr;
+        }
     }
 
 #ifndef _WIN32

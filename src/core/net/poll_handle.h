@@ -1,6 +1,7 @@
 #pragma once
 
 #include <uv.h>
+#include <cassert>
 
 // RAII wrapper around uv_poll_t that tracks init/active/closing/closed state.
 //
@@ -13,30 +14,8 @@ public:
     PollHandle() = default;
     PollHandle(const PollHandle&) = delete;
     PollHandle& operator=(const PollHandle&) = delete;
-    PollHandle(PollHandle&& o) noexcept
-        : handle_(o.handle_), inited_(o.inited_), active_(o.active_),
-          closing_(o.closing_), closed_(o.closed_) {
-        if (inited_ && !closed_) handle_.data = o.handle_.data;
-        o.inited_ = false;
-        o.active_ = false;
-        o.closing_ = false;
-        o.closed_ = false;
-    }
-    PollHandle& operator=(PollHandle&& o) noexcept {
-        if (this != &o) {
-            handle_ = o.handle_;
-            inited_ = o.inited_;
-            active_ = o.active_;
-            closing_ = o.closing_;
-            closed_ = o.closed_;
-            if (inited_ && !closed_) handle_.data = o.handle_.data;
-            o.inited_ = false;
-            o.active_ = false;
-            o.closing_ = false;
-            o.closed_ = false;
-        }
-        return *this;
-    }
+    PollHandle(PollHandle&&) = delete;
+    PollHandle& operator=(PollHandle&&) = delete;
 
     void Init(uv_loop_t* loop, uv_os_sock_t sock) {
         if (inited_) return;

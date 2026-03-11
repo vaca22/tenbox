@@ -91,8 +91,19 @@ void NetBackend::TeardownPortForwards() {
             }
         }
     }
-    while (uv_run(&loop_, UV_RUN_NOWAIT) != 0)
-        ;
+    auto all_polls_closed = [this]() {
+        for (const auto& pf : port_forwards_) {
+            if (pf.listener_poll.inited() && !pf.listener_poll.closed())
+                return false;
+            for (const auto& c : pf.conns) {
+                if (c.poll.inited() && !c.poll.closed())
+                    return false;
+            }
+        }
+        return true;
+    };
+    while (!all_polls_closed())
+        uv_run(&loop_, UV_RUN_NOWAIT);
     for (auto& pf : port_forwards_)
         pf.conns.clear();
     port_forwards_.clear();
@@ -111,8 +122,13 @@ void NetBackend::CheckPendingUpdates() {
     }
     if (update) {
         TeardownPortForwards();
-        for (auto& f : *update)
-            port_forwards_.emplace_back(PfEntry{this, f.host_port, f.guest_port});
+        for (const auto& f : *update) {
+            port_forwards_.emplace_back();
+            auto& pf = port_forwards_.back();
+            pf.backend = this;
+            pf.host_port = f.host_port;
+            pf.guest_port = f.guest_port;
+        }
         auto failed = SetupPortForwards();
         LOG_INFO("Port forwards updated (%zu entries, %zu failed)",
                  update->size(), failed.size());
@@ -220,13 +236,11 @@ void NetBackend::OnPfListenerReadable(PfEntry* pf) {
     ip_addr_t guest_addr;
     IP4_ADDR(ip_2_ip4(&guest_addr), 10, 0, 2, 15);
 
-    PfEntry::Conn conn;
-    conn.backend = pf->backend;
-    conn.host_sock = static_cast<uintptr_t>(cs);
-    conn.guest_pcb = pcb;
-    pf->conns.push_back(std::move(conn));
-
+    pf->conns.emplace_back();
     auto* conn_ptr = &pf->conns.back();
+    conn_ptr->backend = pf->backend;
+    conn_ptr->host_sock = static_cast<uintptr_t>(cs);
+    conn_ptr->guest_pcb = pcb;
     tcp_arg(pcb, conn_ptr);
     tcp_recv(pcb, [](void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err) -> err_t {
         auto* c = static_cast<PfEntry::Conn*>(arg);

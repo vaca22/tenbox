@@ -432,7 +432,8 @@ bool ManagerService::StartVm(const std::string& vm_id, std::string* error) {
         }
         CleanupRuntimeHandles(*vmp);
         vmp->state = VmPowerState::kStarting;
-        pipe_name = R"(\\.\pipe\tenbox_vm_)" + vmp->spec.vm_id;
+        pipe_name = R"(\\.\pipe\tenbox_vm_)" + vmp->spec.vm_id.substr(0, 8)
+                    + "_" + std::to_string(GetTickCount64());
         vmp->runtime.pipe_name = pipe_name;
         spec_copy = vmp->spec;
     }

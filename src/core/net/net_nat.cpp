@@ -134,10 +134,15 @@ void NetBackend::RemoveNatEntry(NatEntry* entry) {
         entry->listen_pcb = nullptr;
     }
     if (entry->conn_pcb) {
-        if (entry->proto == IPPROTO_TCP)
-            tcp_abort(static_cast<struct tcp_pcb*>(entry->conn_pcb));
-        else
+        if (entry->proto == IPPROTO_TCP) {
+            auto* pcb = static_cast<struct tcp_pcb*>(entry->conn_pcb);
+            tcp_arg(pcb, nullptr);
+            tcp_recv(pcb, nullptr);
+            tcp_err(pcb, nullptr);
+            tcp_abort(pcb);
+        } else {
             udp_remove(static_cast<struct udp_pcb*>(entry->conn_pcb));
+        }
         entry->conn_pcb = nullptr;
     }
 
@@ -159,9 +164,12 @@ void NetBackend::CleanupStaleEntries() {
     constexpr uint64_t kTcpDeadTimeoutMs      = 30000;
     constexpr uint64_t kTcpIdleTimeoutMs      = 300000;
 
-    auto it = nat_entries_.begin();
-    while (it != nat_entries_.end()) {
-        auto& e = *it;
+    // Use index-based iteration because tcp_abort / tcp_close may
+    // synchronously fire lwIP callbacks that could re-enter and mutate
+    // nat_entries_ (e.g. via RemoveNatEntry), invalidating iterators.
+    size_t i = 0;
+    while (i < nat_entries_.size()) {
+        auto& e = nat_entries_[i];
         bool remove = false;
         uint64_t age = now - e->last_active_ms;
 
@@ -185,22 +193,30 @@ void NetBackend::CleanupStaleEntries() {
                 e->listen_pcb = nullptr;
             }
             if (e->conn_pcb) {
-                if (e->proto == IPPROTO_TCP)
-                    tcp_abort(static_cast<struct tcp_pcb*>(e->conn_pcb));
+                void* pcb = e->conn_pcb;
+                if (e->proto == IPPROTO_TCP) {
+                    // Detach callbacks before aborting so the synchronous
+                    // tcp_err firing inside tcp_abort does not re-enter us.
+                    auto* tcp_pcb_p = static_cast<struct tcp_pcb*>(pcb);
+                    tcp_arg(tcp_pcb_p, nullptr);
+                    tcp_recv(tcp_pcb_p, nullptr);
+                    tcp_err(tcp_pcb_p, nullptr);
+                    tcp_abort(tcp_pcb_p);
+                }
                 e->conn_pcb = nullptr;
             }
             if (e->poll.inited() && !e->poll.closing()) {
                 e->poll.Close();
                 e->state = NatState::Closed;
-                ++it;
+                ++i;
             } else if (e->poll.closing() && !e->poll.closed()) {
                 e->state = NatState::Closed;
-                ++it;
+                ++i;
             } else {
-                it = nat_entries_.erase(it);
+                nat_entries_.erase(nat_entries_.begin() + static_cast<ptrdiff_t>(i));
             }
         } else {
-            ++it;
+            ++i;
         }
     }
 }

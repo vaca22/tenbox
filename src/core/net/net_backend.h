@@ -189,7 +189,8 @@ private:
         };
         std::list<Conn> conns;
     };
-    std::vector<PfEntry> port_forwards_;
+    // PfEntry addresses are used as libuv callback data, so storage must stay stable.
+    std::list<PfEntry> port_forwards_;
     void TeardownPfConn(PfEntry::Conn& c);
     void DrainPfToGuest(PfEntry::Conn& conn);
     void DrainPfToHost(PfEntry::Conn& conn);
