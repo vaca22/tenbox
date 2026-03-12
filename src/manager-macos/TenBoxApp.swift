@@ -57,6 +57,12 @@ struct TenBoxApp: App {
             image.size = NSSize(width: 256, height: 256)
             return image
         }
+        // SwiftPM places .copy resources in Bundle.module
+        if let url = Bundle.module.url(forResource: "icon", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            image.size = NSSize(width: 256, height: 256)
+            return image
+        }
         return nil
     }
 
@@ -113,6 +119,7 @@ class AppState: ObservableObject {
     @Published var showCreateVmDialog = false
     @Published var showEditVmDialog = false
     @Published var showKeyboardCapturePermissionAlert = false
+    @Published var startVmError: String?
 
     private var bridge = TenBoxBridgeWrapper()
     private var activeSessions: [String: VmSession] = [:]
@@ -204,10 +211,15 @@ class AppState: ObservableObject {
     }
 
     func startVm(id: String) {
-        bridge.startVm(id: id)
+        let ok = bridge.startVm(id: id)
         refreshVmList()
-        if let session = activeSessions[id] {
-            session.connectIfNeeded()
+        if ok {
+            if let session = activeSessions[id] {
+                session.connectIfNeeded()
+            }
+        } else {
+            let vmName = vms.first(where: { $0.id == id })?.name ?? id
+            startVmError = "Failed to start VM \"\(vmName)\". The runtime binary may be missing or the VM configuration is invalid."
         }
     }
 

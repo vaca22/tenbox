@@ -1,12 +1,23 @@
 #include "core/device/timer/i8254_pit.h"
 
+#ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <cpuid.h>
+#include <mach/mach_time.h>
+#include <unistd.h>
+#endif
 
 uint64_t I8254Pit::MeasureTscFrequency() {
     // Try CPUID 0x15 (TSC / Core Crystal Clock) first.
+#ifdef _WIN32
     int info[4]{};
     __cpuid(info, 0x15);
+#else
+    unsigned int info[4]{};
+    __cpuid(0x15, info[0], info[1], info[2], info[3]);
+#endif
     uint32_t denom  = static_cast<uint32_t>(info[0]);
     uint32_t numer  = static_cast<uint32_t>(info[1]);
     uint32_t crystal = static_cast<uint32_t>(info[2]);
@@ -16,7 +27,7 @@ uint64_t I8254Pit::MeasureTscFrequency() {
         return freq;
     }
 
-    // Fallback: measure with QPC.
+#ifdef _WIN32
     LARGE_INTEGER qpf, qpc_start, qpc_end;
     QueryPerformanceFrequency(&qpf);
     QueryPerformanceCounter(&qpc_start);
@@ -27,8 +38,19 @@ uint64_t I8254Pit::MeasureTscFrequency() {
 
     double elapsed = static_cast<double>(qpc_end.QuadPart - qpc_start.QuadPart)
                      / qpf.QuadPart;
+#else
+    mach_timebase_info_data_t tb;
+    mach_timebase_info(&tb);
+    uint64_t mach_start = mach_absolute_time();
+    uint64_t tsc_start = __rdtsc();
+    usleep(50000);
+    uint64_t tsc_end = __rdtsc();
+    uint64_t mach_end = mach_absolute_time();
+
+    double elapsed = static_cast<double>(mach_end - mach_start) * tb.numer / tb.denom / 1e9;
+#endif
     uint64_t freq = static_cast<uint64_t>((tsc_end - tsc_start) / elapsed);
-    LOG_INFO("TSC frequency measured via QPC: %llu Hz", freq);
+    LOG_INFO("TSC frequency measured: %llu Hz", freq);
     return freq;
 }
 

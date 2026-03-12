@@ -1,7 +1,11 @@
 #pragma once
 
 #include "core/device/device.h"
+#ifdef _MSC_VER
 #include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
 
 // Minimal i8254 PIT emulation for Linux boot timing calibration.
 // Uses host RDTSC for timing to stay perfectly synchronized with guest TSC

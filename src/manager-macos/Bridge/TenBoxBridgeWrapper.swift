@@ -52,8 +52,9 @@ class TenBoxBridgeWrapper {
         bridge.deleteVm(withId: id)
     }
 
-    func startVm(id: String) {
-        bridge.startVm(withId: id)
+    @discardableResult
+    func startVm(id: String) -> Bool {
+        return bridge.startVm(withId: id)
     }
 
     func stopVm(id: String) {

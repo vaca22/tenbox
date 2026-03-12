@@ -128,7 +128,7 @@ std::unique_ptr<Vm> Vm::Create(const VmConfig& config) {
 
     vm->cpu_count_ = config.cpu_count;
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(__aarch64__)
     vm->vcpus_.resize(config.cpu_count);
     // Allocate per-CPU state for secondary PSCI wakeup
     vm->secondary_cpu_states_.resize(config.cpu_count);
@@ -405,7 +405,7 @@ bool Vm::SetupVirtioSnd(const VirtioDeviceSlot& slot) {
 }
 
 void Vm::VCpuThreadFunc(uint32_t vcpu_index) {
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(__aarch64__)
     auto created = hv_vm_->CreateVCpu(vcpu_index, &addr_space_);
     if (!created) {
         LOG_ERROR("vCPU %u: failed to create on thread", vcpu_index);

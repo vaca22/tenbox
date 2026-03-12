@@ -166,6 +166,20 @@ struct ContentView: View {
         } message: {
             keyboardCapturePermissionMessage
         }
+        .alert("Start VM Failed", isPresented: showStartVmErrorBinding) {
+            Button("OK", role: .cancel) {
+                appState.startVmError = nil
+            }
+        } message: {
+            Text(appState.startVmError ?? "")
+        }
+    }
+
+    private var showStartVmErrorBinding: Binding<Bool> {
+        Binding(
+            get: { appState.startVmError != nil },
+            set: { if !$0 { appState.startVmError = nil } }
+        )
     }
 
     @ViewBuilder

@@ -352,15 +352,15 @@ private struct SelectableImageRow: View {
     let onSelect: () -> Void
 
     var body: some View {
-        ImageRow(image: image, isCached: isCached)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                onSelect()
-            }
+        Button(action: onSelect) {
+            ImageRow(image: image, isCached: isCached)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

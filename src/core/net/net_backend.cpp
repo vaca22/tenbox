@@ -392,7 +392,7 @@ void NetBackend::UpdatePfConnPoll(PfEntry::Conn& conn) {
 void NetBackend::NetworkThread() {
     lwip_init();
 
-    auto* nif = new struct netif{};
+    auto* nif = new netif();
     ip4_addr_t ip, mask, gw;
     IP4_ADDR(&ip,   10, 0, 2, 2);
     IP4_ADDR(&mask, 255, 255, 255, 0);
