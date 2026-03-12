@@ -14,7 +14,7 @@ bool VmPlatform::IsHypervisorPresent() {
 std::unique_ptr<HypervisorVm> VmPlatform::CreateHypervisor(uint32_t cpu_count) {
     auto vm = whvp::WhvpVm::Create(cpu_count);
     if (vm) {
-        whvp::WhvpVCpu::EnableExitStats(true);
+        whvp::WhvpVCpu::EnableExitStats(false);
     }
     return vm;
 }
