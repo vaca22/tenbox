@@ -233,6 +233,7 @@ bool ShowEditVmDialog(HWND parent, ManagerService& mgr,
                    rec.state == VmPowerState::kStarting;
     EnableWindow(GetDlgItem(dlg, IDC_ED_MEM_SLIDER), !running);
     EnableWindow(GetDlgItem(dlg, IDC_ED_CPU_SLIDER), !running);
+    EnableWindow(GetDlgItem(dlg, IDC_ED_DEBUG), !running);
     if (running)
         SetDlgItemTextW(dlg, IDC_ED_WARN, i18n::tr_w(S::kCpuMemoryChangeWarning).c_str());
 
