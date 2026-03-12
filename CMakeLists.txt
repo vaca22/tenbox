@@ -8,6 +8,13 @@ file(STRINGS "${CMAKE_SOURCE_DIR}/VERSION" TENBOX_VERSION_STRING LIMIT_COUNT 1)
 string(STRIP "${TENBOX_VERSION_STRING}" TENBOX_VERSION_STRING)
 project(TenBox VERSION ${TENBOX_VERSION_STRING} LANGUAGES C CXX)
 
+# When cross-compiling (e.g. building x86_64 on an arm64 host), CMake auto-detects
+# the host processor, not the target. Override it from CMAKE_OSX_ARCHITECTURES so
+# that architecture-specific source selection in src/core and src/platform works.
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    set(CMAKE_SYSTEM_PROCESSOR "${CMAKE_OSX_ARCHITECTURES}")
+endif()
+
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/VERSION")
 
 set(CMAKE_CXX_STANDARD 20)

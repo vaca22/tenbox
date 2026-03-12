@@ -16,13 +16,13 @@
       "min_os": "Windows 10"
     },
     "macos": {
-      "latest_version": "0.4.1",
-      "release_notes": "基于事件的通信优化性能\n调整共享文件夹与端口转发的位置",
-      "release_date": "2026-03-11",
-      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox_0.4.1_arm64.dmg",
-      "sha256": "febee6abe7ca328b3a1cedc54c51eaa1d603a911a0a2abced18b7946ac73e30a",
-      "size": 3158872,
-      "min_os": "macOS 15.0"
+      "latest_version": "0.4.2",
+      "release_notes": "支持虚拟机通过 10.0.2.2 访问主机服务\n默认关闭 Linux 内核日志\n优化设备性能\n支持 macOS 12\n支持 Intel CPU",
+      "release_date": "2026-03-13",
+      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox-0.4.2.dmg",
+      "sha256": "7a0237e5d4b03a67a63774a6935f270d7ad1286097ca72707b683ed2605181ed",
+      "size": 4241724,
+      "min_os": "macOS 12"
     }
   }
 }
