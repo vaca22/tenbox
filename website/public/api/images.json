@@ -2,14 +2,14 @@
   "images": [
     {
       "id": "openclaw",
-      "version": "2026.3.11",
-      "name": "OpenClaw 2026.3.11",
+      "version": "2026.3.12",
+      "name": "OpenClaw 2026.3.12",
       "description": "一个基于 Debian 12 的环境，预装了 OpenClaw 和 Chromium 浏览器。",
       "min_app_version": "0.1.0",
       "os": "linux",
       "arch": "microvm",
       "platform": "x86_64",
-      "updated_at": "2026-03-12",
+      "updated_at": "2026-03-13",
       "files": [
         {
           "name": "vmlinuz",
@@ -25,9 +25,9 @@
         },
         {
           "name": "rootfs.qcow2",
-          "url": "https://files.xiaozhi.me/tenbox/images/openclaw/rootfs-openclaw-2026.3.11.qcow2",
-          "sha256": "4d4aa6b681c865331c380af02d41b2695800018aef977d93a8cb80b5489000b3",
-          "size": 1548979200
+          "url": "https://files.xiaozhi.me/tenbox/images/openclaw/rootfs-openclaw-2026.3.12.qcow2",
+          "sha256": "8f2d67fde7b3428a9d7af0a0134ec4ef7fa350783a0883c8e9279e6ab638c72e",
+          "size": 1468128768
         }
       ]
     },
@@ -157,14 +157,14 @@
     },
     {
       "id": "openclaw-arm64",
-      "version": "2026.3.11",
-      "name": "OpenClaw 2026.3.11 (ARM64)",
+      "version": "2026.3.12",
+      "name": "OpenClaw 2026.3.12 (ARM64)",
       "description": "一个基于 Debian 12 的环境，预装了 OpenClaw 和 Chromium 浏览器。",
       "min_app_version": "0.1.0",
       "os": "linux",
       "arch": "microvm",
       "platform": "arm64",
-      "updated_at": "2026-03-12",
+      "updated_at": "2026-03-13",
       "files": [
         {
           "name": "vmlinuz",
@@ -180,9 +180,9 @@
         },
         {
           "name": "rootfs.qcow2",
-          "url": "https://files.xiaozhi.me/tenbox/images/openclaw-arm64/rootfs-openclaw-arm64-2026.3.11.qcow2",
-          "sha256": "43e9b96b877fb362823856a2c60a37e5d97c4fadc5666311ba0d87190af7ec6f",
-          "size": 1456301056
+          "url": "https://files.xiaozhi.me/tenbox/images/openclaw-arm64/rootfs-openclaw-arm64-2026.3.12.qcow2",
+          "sha256": "2fdc35351dcc0b4e58d0f00c6fcb20b4ef26912217c37e90e9d978c2c5b902b1",
+          "size": 1447821312
         }
       ]
     }
