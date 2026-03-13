@@ -58,7 +58,6 @@ class CoreAudioPlayer {
 
         pendingData.append(data)
 
-        // Drop oldest data if buffer exceeds the limit to prevent unbounded growth
         if pendingData.count > maxPendingBytes {
             let excess = pendingData.count - maxPendingBytes
             pendingData.removeFirst(excess)

@@ -5,8 +5,8 @@ class IpcClientWrapper: ObservableObject {
     private let client = TBIpcClient()
     @Published var isConnected = false
 
-    // Display: (pixels, dirtyW, dirtyH, stride, resourceW, resourceH, dirtyX, dirtyY)
-    var onFrame: ((Data, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32) -> Void)?
+    // Display: (pixelBytes, pixelLength, dirtyW, dirtyH, stride, resourceW, resourceH, dirtyX, dirtyY)
+    var onFrame: ((UnsafeRawPointer, Int, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32, UInt32) -> Void)?
     var onDisplayState: ((Bool, UInt32, UInt32) -> Void)?
     // Cursor: (visible, imageUpdated, width, height, hotX, hotY, pixels?)
     var onCursor: ((Bool, Bool, UInt32, UInt32, UInt32, UInt32, Data?) -> Void)?
@@ -112,8 +112,8 @@ class IpcClientWrapper: ObservableObject {
 
     private func startReceiveLoop() {
         client.startReceiveLoop(
-            frameHandler: { [weak self] pixels, w, h, stride, resW, resH, dirtyX, dirtyY in
-                self?.onFrame?(pixels, w, h, stride, resW, resH, dirtyX, dirtyY)
+            frameHandler: { [weak self] pixelBytes, pixelLength, w, h, stride, resW, resH, dirtyX, dirtyY in
+                self?.onFrame?(pixelBytes, Int(pixelLength), w, h, stride, resW, resH, dirtyX, dirtyY)
             },
             cursorHandler: { [weak self] visible, imageUpdated, w, h, hotX, hotY, pixels in
                 self?.onCursor?(visible, imageUpdated, w, h, hotX, hotY, pixels)

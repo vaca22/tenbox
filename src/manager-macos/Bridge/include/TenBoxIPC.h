@@ -37,10 +37,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)sendClipboardRequest:(uint32_t)dataType;
 - (BOOL)sendClipboardRelease;
 
-// Start receive loop on background thread; calls blocks on main queue.
+// Start receive loop on background thread; calls blocks on the recv thread.
 // Frame handler: dirtyX/dirtyY = position within the full resource (resW x resH).
 //   w/h/stride describe the dirty rectangle payload only.
-- (void)startReceiveLoopWithFrameHandler:(void (^)(NSData *pixels, uint32_t w, uint32_t h, uint32_t stride, uint32_t resW, uint32_t resH, uint32_t dirtyX, uint32_t dirtyY))frameHandler
+//   pixelBytes points to shared memory and is only valid for the duration of the call.
+- (void)startReceiveLoopWithFrameHandler:(void (^)(const void *pixelBytes, size_t pixelLength, uint32_t w, uint32_t h, uint32_t stride, uint32_t resW, uint32_t resH, uint32_t dirtyX, uint32_t dirtyY))frameHandler
                            cursorHandler:(void (^)(BOOL visible, BOOL imageUpdated, uint32_t width, uint32_t height, uint32_t hotX, uint32_t hotY, NSData * _Nullable pixels))cursorHandler
                             audioHandler:(void (^)(NSData *pcm, uint32_t rate, uint16_t channels))audioHandler
                          consoleHandler:(void (^)(NSString *text))consoleHandler

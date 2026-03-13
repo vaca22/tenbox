@@ -44,20 +44,18 @@ class VmSession: ObservableObject {
             self?.guestAgentConnected = conn
         }
 
-        ipcClient.onFrame = { [weak self] pixels, w, h, stride, resW, resH, dirtyX, dirtyY in
+        ipcClient.onFrame = { [weak self] pixelBytes, pixelLength, w, h, stride, resW, resH, dirtyX, dirtyY in
             guard let self = self, let renderer = self.renderer else { return }
-            pixels.withUnsafeBytes { ptr in
-                renderer.blitDirtyRect(
-                    pixels: ptr.baseAddress!,
-                    dirtyX: Int(dirtyX),
-                    dirtyY: Int(dirtyY),
-                    dirtyWidth: Int(w),
-                    dirtyHeight: Int(h),
-                    srcStride: Int(stride),
-                    resourceWidth: Int(resW),
-                    resourceHeight: Int(resH)
-                )
-            }
+            renderer.blitDirtyRect(
+                pixels: pixelBytes,
+                dirtyX: Int(dirtyX),
+                dirtyY: Int(dirtyY),
+                dirtyWidth: Int(w),
+                dirtyHeight: Int(h),
+                srcStride: Int(stride),
+                resourceWidth: Int(resW),
+                resourceHeight: Int(resH)
+            )
         }
 
         ipcClient.onAudio = { [weak self] pcm, rate, channels in

@@ -16,12 +16,12 @@
       "min_os": "Windows 10"
     },
     "macos": {
-      "latest_version": "0.4.5",
-      "release_notes": "修复粘贴板的bug\n支持虚拟机通过 10.0.2.2 访问主机服务\n默认关闭 Linux 内核日志\n优化设备性能\n支持 macOS 12\n支持 Intel CPU",
-      "release_date": "2026-03-13",
-      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox-0.4.5.dmg",
-      "sha256": "0f604e080fc24cc05fced98c5b6f139da17e9b66be058bbe275544d6be73feab",
-      "size": 4243271,
+      "latest_version": "0.4.6",
+      "release_notes": "修复TenBoxManager内存泄漏的bug",
+      "release_date": "2026-03-14",
+      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox-0.4.6.dmg",
+      "sha256": "96d3895b8c2f6198da58b9218e18d28aaf822f461bcd121c2d6b6dad18dcc7a0",
+      "size": 4247156,
       "min_os": "macOS 12"
     }
   }

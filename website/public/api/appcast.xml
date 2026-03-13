@@ -6,25 +6,20 @@
     <description>TenBox macOS Updates</description>
     <language>zh-CN</language>
     <item>
-      <title>Version 0.4.5</title>
+      <title>Version 0.4.6</title>
       <description><![CDATA[
         <ul>
-          <li>修复粘贴板的bug</li>
-          <li>支持虚拟机通过 10.0.2.2 访问主机服务</li>
-          <li>默认关闭 Linux 内核日志</li>
-          <li>优化设备性能</li>
-          <li>支持 macOS 12</li>
-          <li>支持 Intel CPU</li>
+          <li>修复TenBoxManager内存泄漏的bug</li>
         </ul>
       ]]></description>
-      <pubDate>Fri, 13 Mar 2026 00:00:00 -0000</pubDate>
+      <pubDate>Sat, 14 Mar 2026 00:00:00 -0000</pubDate>
       <sparkle:minimumSystemVersion>12</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://files.xiaozhi.me/tenbox/releases/TenBox-0.4.5.zip"
-        sparkle:version="0.4.5"
-        sparkle:shortVersionString="0.4.5"
-        sparkle:edSignature="Nioyf80Gp7xdoFA+lVmMC+XnJ+LhkEZqvmxlW2CnFdqXhNBCLg63ti5PCNEdtWt/gJuqI7vkIvI6RLPP1JvgCQ=="
-        length="4305776"
+        url="https://files.xiaozhi.me/tenbox/releases/TenBox-0.4.6.zip"
+        sparkle:version="0.4.6"
+        sparkle:shortVersionString="0.4.6"
+        sparkle:edSignature="BaLgo4o7+vm5nOcYhp6/UzqiHlBoSPz8d02C4CpCTzpRkN7RUSvP2J5ZneE0F1JIZdXWFLf04S+dghnsre11AQ=="
+        length="4301327"
         type="application/octet-stream"
       />
     </item>

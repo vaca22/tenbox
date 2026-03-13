@@ -87,7 +87,11 @@ static std::string HexDecode(const std::string& hex) {
     }
     if (_recvThread.joinable()) {
         if (_recvThread.get_id() == std::this_thread::get_id()) {
+            // Called from within the recv thread (e.g. via disconnect handler callback).
+            // Cannot join ourselves; detach and defer SHM cleanup to dealloc.
             _recvThread.detach();
+            _connection.reset();
+            return;
         } else {
             _recvThread.join();
         }
@@ -310,7 +314,7 @@ static std::string HexDecode(const std::string& hex) {
 
 #pragma mark - Receive Loop
 
-- (void)startReceiveLoopWithFrameHandler:(void (^)(NSData *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))frameHandler
+- (void)startReceiveLoopWithFrameHandler:(void (^)(const void *, size_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))frameHandler
                            cursorHandler:(void (^)(BOOL, BOOL, uint32_t, uint32_t, uint32_t, uint32_t, NSData * _Nullable))cursorHandler
                             audioHandler:(void (^)(NSData *, uint32_t, uint16_t))audioHandler
                          consoleHandler:(void (^)(NSString *))consoleHandler
@@ -329,7 +333,7 @@ static std::string HexDecode(const std::string& hex) {
 
     _running = true;
 
-    typedef void (^FrameBlock)(NSData *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+    typedef void (^FrameBlock)(const void *, size_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
     typedef void (^CursorBlock)(BOOL, BOOL, uint32_t, uint32_t, uint32_t, uint32_t, NSData * _Nullable);
     typedef void (^AudioBlock)(NSData *, uint32_t, uint16_t);
     typedef void (^ConsoleBlock)(NSString *);
@@ -410,7 +414,9 @@ static std::string HexDecode(const std::string& hex) {
             }
             IPC_DEBUG_LOG(@"[IPC] << %s [%zd bytes] received", GetTimestamp().c_str(), n);
             pending.append(readbuf, static_cast<size_t>(n));
-            dispatchMessages();
+            @autoreleasepool {
+                dispatchMessages();
+            }
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -420,7 +426,7 @@ static std::string HexDecode(const std::string& hex) {
 }
 
 - (void)dispatchMsg:(ipc::Message&)msg
-                 fh:(void (^)(NSData *, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))fh
+                 fh:(void (^)(const void *, size_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))fh
                 cuH:(void (^)(BOOL, BOOL, uint32_t, uint32_t, uint32_t, uint32_t, NSData * _Nullable))cuH
                  ah:(void (^)(NSData *, uint32_t, uint16_t))ah
                 coh:(void (^)(NSString *))coh
@@ -464,39 +470,13 @@ static std::string HexDecode(const std::string& hex) {
 
         IPC_DEBUG_LOG(@"[IPC] << %s display.frame_ready %ux%u [%u,%u]", GetTimestamp().c_str(), w, h, dirtyX, dirtyY);
 
-        // Zero-copy: wrap SHM pointer directly into NSData.
-        // Point to the first row of the dirty rect; pass the full SHM stride
-        // so Metal's texture.replace can stride-skip between rows.
         uint32_t shm_stride = _shmFb.stride();
         size_t offset = static_cast<size_t>(dirtyY) * shm_stride +
                         static_cast<size_t>(dirtyX) * 4;
         size_t needed = static_cast<size_t>(h - 1) * shm_stride + static_cast<size_t>(w) * 4;
         if (offset + needed > _shmFb.size()) return;
 
-        NSData* pixels = [NSData dataWithBytesNoCopy:_shmFb.data() + offset
-                                              length:needed
-                                        freeWhenDone:NO];
-        fh(pixels, w, h, shm_stride, resW, resH, dirtyX, dirtyY);
-    }
-    else if (msg.type == "display.frame") {
-        // Legacy fallback path: frame data sent via IPC payload.
-        uint32_t w = getU32("width");
-        uint32_t h = getU32("height");
-        uint32_t stride = getU32("stride");
-        uint32_t resW = getU32("resource_width");
-        uint32_t resH = getU32("resource_height");
-        uint32_t dirtyX = getU32("dirty_x");
-        uint32_t dirtyY = getU32("dirty_y");
-        if (resW == 0) resW = w;
-        if (resH == 0) resH = h;
-        if (w == 0 || h == 0 || stride == 0 || msg.payload.empty()) return;
-
-        IPC_DEBUG_LOG(@"[IPC] << %s display.frame %ux%u [%zu bytes payload]", GetTimestamp().c_str(), w, h, msg.payload.size());
-
-        NSData* pixels = [NSData dataWithBytesNoCopy:(void*)msg.payload.data()
-                                              length:msg.payload.size()
-                                        freeWhenDone:NO];
-        fh(pixels, w, h, stride, resW, resH, dirtyX, dirtyY);
+        fh(_shmFb.data() + offset, needed, w, h, shm_stride, resW, resH, dirtyX, dirtyY);
     }
     else if (msg.type == "display.cursor") {
         BOOL visible = (getU32("visible") != 0);

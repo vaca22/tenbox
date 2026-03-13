@@ -1670,34 +1670,6 @@ void ManagerService::HandleIncomingMessage(const std::string& vm_id, const ipc::
 
     if (msg.channel == ipc::Channel::kDisplay &&
         msg.kind == ipc::Kind::kEvent &&
-        msg.type == "display.frame") {
-        // Legacy fallback path: frame data sent via IPC payload.
-        DisplayFrame frame;
-        auto get = [&](const char* key) -> uint32_t {
-            auto it = msg.fields.find(key);
-            return (it != msg.fields.end()) ? static_cast<uint32_t>(std::strtoul(it->second.c_str(), nullptr, 10)) : 0;
-        };
-        frame.width = get("width");
-        frame.height = get("height");
-        frame.stride = get("stride");
-        frame.format = get("format");
-        frame.resource_width = get("resource_width");
-        frame.resource_height = get("resource_height");
-        frame.dirty_x = get("dirty_x");
-        frame.dirty_y = get("dirty_y");
-        frame.pixels = std::move(msg.payload);
-
-        DisplayCallback cb;
-        {
-            std::lock_guard<std::mutex> lock(vms_mutex_);
-            cb = display_callback_;
-        }
-        if (cb) cb(vm_id, std::move(frame));
-        return;
-    }
-
-    if (msg.channel == ipc::Channel::kDisplay &&
-        msg.kind == ipc::Kind::kEvent &&
         msg.type == "display.cursor") {
         CursorInfo cursor;
         auto get = [&](const char* key) -> uint32_t {
