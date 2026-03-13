@@ -1,5 +1,6 @@
 import SwiftUI
 import MetalKit
+import AppKit
 
 class VmSession: ObservableObject {
     let vmId: String
@@ -21,11 +22,13 @@ class VmSession: ObservableObject {
     var displayScale: Int = 1
 
     private let bridge = TenBoxBridgeWrapper()
+    private weak var clipboardHandler: ClipboardHandler?
     private var connecting = false
     private static let maxConsoleSize = 32 * 1024
 
-    init(vmId: String) {
+    init(vmId: String, clipboardHandler: ClipboardHandler) {
         self.vmId = vmId
+        self.clipboardHandler = clipboardHandler
         setupCallbacks()
     }
 
@@ -88,6 +91,63 @@ class VmSession: ObservableObject {
             self.connected = false
             self.connecting = false
             self.displayInitialized = false
+        }
+
+        setupClipboardCallbacks()
+    }
+
+    private func setupClipboardCallbacks() {
+        ipcClient.onClipboardData = { [weak self] dataType, payload in
+            guard let self = self else { return }
+            if let mime = Self.dataTypeToMime(dataType) {
+                self.clipboardHandler?.setGuestClipboard(data: payload, mimeType: mime)
+            }
+        }
+
+        ipcClient.onClipboardGrab = { [weak ipcClient] types in
+            guard let client = ipcClient else { return }
+            for t in types {
+                client.sendClipboardRequest(dataType: t)
+            }
+        }
+
+        ipcClient.onClipboardRequest = { [weak self] dataType in
+            guard let self = self else { return }
+            let pasteboard = NSPasteboard.general
+            var data: Data?
+            switch dataType {
+            case 1:
+                if let str = pasteboard.string(forType: .string) {
+                    data = str.data(using: .utf8)
+                }
+            case 2:
+                data = pasteboard.data(forType: .png)
+            case 3:
+                data = pasteboard.data(forType: .init("com.microsoft.bmp"))
+            default:
+                break
+            }
+            if let data = data {
+                self.ipcClient.sendClipboardData(dataType: dataType, payload: data)
+            }
+        }
+    }
+
+    static func mimeToDataType(_ mime: String) -> UInt32 {
+        switch mime {
+        case "text/plain", "text/plain;charset=utf-8", "UTF8_STRING": return 1
+        case "image/png": return 2
+        case "image/bmp": return 3
+        default: return 0
+        }
+    }
+
+    static func dataTypeToMime(_ dataType: UInt32) -> String? {
+        switch dataType {
+        case 1: return "text/plain;charset=utf-8"
+        case 2: return "image/png"
+        case 3: return "image/bmp"
+        default: return nil
         }
     }
 

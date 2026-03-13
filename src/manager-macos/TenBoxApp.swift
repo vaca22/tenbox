@@ -123,6 +123,7 @@ class AppState: ObservableObject {
     @Published var startVmError: String?
 
     private var bridge = TenBoxBridgeWrapper()
+    let clipboardHandler = ClipboardHandler()
     private var activeSessions: [String: VmSession] = [:]
     private var sessionCancellables: [String: AnyCancellable] = [:]
     private var stateObserver: NSObjectProtocol?
@@ -130,6 +131,7 @@ class AppState: ObservableObject {
 
     init() {
         refreshVmList()
+        setupClipboard()
         stateObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name("TenBoxVmStateChanged"),
             object: nil, queue: .main
@@ -153,7 +155,22 @@ class AppState: ObservableObject {
         }
     }
 
+    private func setupClipboard() {
+        clipboardHandler.onHostClipboardChanged = { [weak self] data, mimeType in
+            guard let self = self else { return }
+            let dataType = VmSession.mimeToDataType(mimeType)
+            guard dataType != 0 else { return }
+            for session in self.activeSessions.values {
+                guard session.connected else { continue }
+                session.ipcClient.sendClipboardGrab(types: [dataType])
+                session.ipcClient.sendClipboardData(dataType: dataType, payload: data)
+            }
+        }
+        clipboardHandler.startMonitoring()
+    }
+
     deinit {
+        clipboardHandler.stopMonitoring()
         if let obs = stateObserver {
             NotificationCenter.default.removeObserver(obs)
         }
@@ -163,7 +180,7 @@ class AppState: ObservableObject {
         if let existing = activeSessions[vmId] {
             return existing
         }
-        let session = VmSession(vmId: vmId)
+        let session = VmSession(vmId: vmId, clipboardHandler: clipboardHandler)
         if let vm = vms.first(where: { $0.id == vmId }) {
             session.displayScale = vm.displayScale
         }

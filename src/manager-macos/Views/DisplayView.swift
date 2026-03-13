@@ -74,7 +74,6 @@ class DisplayViewModel: ObservableObject {
     @Published var guestCursor: NSCursor?
     @Published var keyboardCaptureBannerKind: KeyboardCaptureBannerKind?
 
-    private let clipboardHandler = ClipboardHandler()
     private var resizeTimer: Timer?
     private weak var session: VmSession?
     private var bannerHideWorkItem: DispatchWorkItem?
@@ -87,7 +86,6 @@ class DisplayViewModel: ObservableObject {
         setupInputHandler(client: session.ipcClient)
         setupKeyboardCapture()
         setupCursorHandler(client: session.ipcClient)
-        setupClipboard(client: session.ipcClient)
     }
 
     func detach() {
@@ -101,7 +99,6 @@ class DisplayViewModel: ObservableObject {
         if !hadCapture {
             inputHandler.releaseAllPressedInputs()
         }
-        clipboardHandler.stopMonitoring()
         session = nil
     }
 
@@ -252,76 +249,6 @@ class DisplayViewModel: ObservableObject {
         return NSCursor(image: nsImage, hotSpot: NSPoint(x: Int(hotX), y: Int(hotY)))
     }
 
-    private func setupClipboard(client: IpcClientWrapper) {
-        client.onClipboardData = { [weak self] dataType, payload in
-            self?.handleGuestClipboardData(dataType: dataType, payload: payload)
-        }
-
-        client.onClipboardGrab = { [weak client] types in
-            guard let client = client else { return }
-            for t in types {
-                client.sendClipboardRequest(dataType: t)
-            }
-        }
-
-        client.onClipboardRequest = { [weak self] dataType in
-            self?.handleGuestClipboardRequest(dataType: dataType)
-        }
-
-        clipboardHandler.onHostClipboardChanged = { [weak client] data, mimeType in
-            guard let client = client, client.isConnected else { return }
-            let dataType = Self.mimeToDataType(mimeType)
-            if dataType != 0 {
-                client.sendClipboardGrab(types: [dataType])
-                client.sendClipboardData(dataType: dataType, payload: data)
-            }
-        }
-        clipboardHandler.startMonitoring()
-    }
-
-    private func handleGuestClipboardData(dataType: UInt32, payload: Data) {
-        if let mime = Self.dataTypeToMime(dataType) {
-            clipboardHandler.setGuestClipboard(data: payload, mimeType: mime)
-        }
-    }
-
-    private func handleGuestClipboardRequest(dataType: UInt32) {
-        let pasteboard = NSPasteboard.general
-        var data: Data?
-        switch dataType {
-        case 1:
-            if let str = pasteboard.string(forType: .string) {
-                data = str.data(using: .utf8)
-            }
-        case 2:
-            data = pasteboard.data(forType: .png)
-        case 3:
-            data = pasteboard.data(forType: .init("com.microsoft.bmp"))
-        default:
-            break
-        }
-        if let data = data, let client = session?.ipcClient {
-            client.sendClipboardData(dataType: dataType, payload: data)
-        }
-    }
-
-    static func mimeToDataType(_ mime: String) -> UInt32 {
-        switch mime {
-        case "text/plain", "text/plain;charset=utf-8", "UTF8_STRING": return 1
-        case "image/png": return 2
-        case "image/bmp": return 3
-        default: return 0
-        }
-    }
-
-    static func dataTypeToMime(_ dataType: UInt32) -> String? {
-        switch dataType {
-        case 1: return "text/plain;charset=utf-8"
-        case 2: return "image/png"
-        case 3: return "image/bmp"
-        default: return nil
-        }
-    }
 }
 
 class InputMTKView: MTKView {

@@ -35,12 +35,12 @@ class ClipboardHandler {
         appObservers.removeAll()
     }
 
-    private     func startTimer() {
+    private func startTimer() {
         guard pollingTimer == nil else { return }
-        lastChangeCount = NSPasteboard.general.changeCount
         pollingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.checkForChanges()
         }
+        checkForChanges()
     }
 
     private func stopTimer() {
