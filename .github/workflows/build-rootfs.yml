@@ -69,7 +69,7 @@ jobs:
           OSS_PUBLIC_URL: https://files.xiaozhi.me
           OSS_TENBOX_IMAGES_DIR: tenbox/images
         run: |
-          pip install oss2
+          pip install oss2 alibabacloud_cdn20180510
           python3 scripts/ci/upload_to_oss.py \
             "${{ steps.find.outputs.qcow2_path }}" \
             "${{ inputs.target }}" \
@@ -132,7 +132,7 @@ jobs:
           OSS_PUBLIC_URL: https://files.xiaozhi.me
           OSS_TENBOX_IMAGES_DIR: tenbox/images
         run: |
-          pip install oss2
+          pip install oss2 alibabacloud_cdn20180510
           python3 scripts/ci/upload_to_oss.py \
             "${{ steps.find.outputs.qcow2_path }}" \
             "${{ inputs.target }}" \
@@ -168,6 +168,9 @@ jobs:
     needs: [build-x86_64, build-arm64]
     runs-on: ubuntu-latest
     name: "Update images.json"
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
