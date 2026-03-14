@@ -241,7 +241,7 @@ When NAT is enabled, TenBox provides a user-mode network:
 The runtime is normally launched by the manager, but can also be invoked directly. On Windows the binary is `tenbox-vm-runtime.exe`; on macOS it is `tenbox-vm-runtime`.
 
 ```bash
-build/tenbox-vm-runtime --kernel build/Image --initrd build/initramfs.cpio.gz \
+build/tenbox-vm-runtime --kernel build/Image --initrd build/initramfs-x86_64.cpio.gz \
     --disk build/rootfs.qcow2 --net
 ```
 

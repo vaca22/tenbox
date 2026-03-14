@@ -1,10 +1,14 @@
-"""Update images.json with newly built qcow2 metadata.
+"""Update images.json with newly built image metadata.
 
-Usage (called by CI after both build jobs finish):
+Usage (called by CI after build jobs finish):
     python3 scripts/ci/update_images_json.py --target <target> --meta-dir <dir>
 
+Supported targets:
+    rootfs-copaw, rootfs-openclaw  — updates rootfs.qcow2 for a specific image
+    initramfs                      — updates initrd.gz for ALL images of matching platform
+
 The meta-dir contains JSON files (one per arch) with:
-    { "arch": "x86_64", "filename": "rootfs-copaw-0.0.8.qcow2", "sha256": "...", "size": 123456 }
+    { "arch": "x86_64", "filename": "...", "sha256": "...", "size": 123456 }
 
 Environment variables:
     OSS_PUBLIC_URL, OSS_TENBOX_IMAGES_DIR
@@ -23,12 +27,27 @@ DISPLAY_NAMES = {
     "openclaw": "OpenClaw",
 }
 
+PLATFORM_MAP = {
+    "arm64": "arm64",
+    "x86_64": "x86_64",
+}
+
 
 def get_image_id(target: str, arch: str) -> str:
     name = target.removeprefix("rootfs-")
     if arch == "arm64":
         name += "-arm64"
     return name
+
+
+def get_oss_dir(target: str, arch: str) -> str:
+    """Derive the OSS directory name."""
+    if target == "initramfs":
+        name = "initramfs"
+        if arch == "arm64":
+            name += "-arm64"
+        return name
+    return get_image_id(target, arch)
 
 
 def extract_version(filename: str, target: str, arch: str) -> str:
@@ -50,7 +69,7 @@ def extract_version(filename: str, target: str, arch: str) -> str:
     return ""
 
 
-def update_image_entry(images: list[dict], target: str, meta: dict) -> str | None:
+def update_rootfs_entry(images: list[dict], target: str, meta: dict) -> str | None:
     arch = meta["arch"]
     image_id = get_image_id(target, arch)
     filename = meta["filename"]
@@ -94,9 +113,37 @@ def update_image_entry(images: list[dict], target: str, meta: dict) -> str | Non
     return version or None
 
 
+def update_initramfs_entries(images: list[dict], meta: dict) -> int:
+    arch = meta["arch"]
+    filename = meta["filename"]
+    sha256 = meta["sha256"]
+    size = meta["size"]
+    platform = PLATFORM_MAP.get(arch, arch)
+
+    images_dir = os.environ.get("OSS_TENBOX_IMAGES_DIR", "tenbox/images").strip("/")
+    public_url = os.environ.get("OSS_PUBLIC_URL", "").rstrip("/")
+    oss_dir = get_oss_dir("initramfs", arch)
+    download_url = f"{public_url}/{images_dir}/{oss_dir}/{filename}"
+
+    updated = 0
+    for img in images:
+        if img.get("platform") != platform:
+            continue
+        for file_entry in img.get("files", []):
+            if file_entry["name"] == "initrd.gz":
+                file_entry["url"] = download_url
+                file_entry["sha256"] = sha256
+                file_entry["size"] = size
+                updated += 1
+                break
+
+    print(f"  {arch}: updated {updated} image(s) -> {download_url}")
+    return updated
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--target", required=True, help="Build target (e.g. rootfs-copaw)")
+    parser.add_argument("--target", required=True, help="Build target (e.g. rootfs-copaw, initramfs)")
     parser.add_argument("--meta-dir", required=True, help="Directory containing per-arch JSON metadata files")
     args = parser.parse_args()
 
@@ -113,9 +160,12 @@ def main():
     versions = set()
     for meta_file in meta_files:
         meta = json.loads(meta_file.read_text())
-        ver = update_image_entry(images, args.target, meta)
-        if ver:
-            versions.add(ver)
+        if args.target == "initramfs":
+            update_initramfs_entries(images, meta)
+        else:
+            ver = update_rootfs_entry(images, args.target, meta)
+            if ver:
+                versions.add(ver)
 
     IMAGES_JSON_PATH.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n",

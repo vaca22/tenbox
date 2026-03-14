@@ -574,13 +574,20 @@ Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-gateway.service
 Environment=OPENCLAW_SERVICE_MARKER=openclaw
 Environment=OPENCLAW_SERVICE_KIND=gateway
 Environment=OPENCLAW_SERVICE_VERSION=\$OC_VERSION
-Environment=NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
-Environment=OPENCLAW_NO_RESPAWN=1
-Environment=DISPLAY=:0
 
 [Install]
 WantedBy=default.target
 UNIT
+
+    mkdir -p "\$UNIT_DIR/openclaw-gateway.service.d"
+    cat > "\$UNIT_DIR/openclaw-gateway.service.d/override.conf" << OVERRIDE
+[Service]
+Environment=PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+Environment=NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
+Environment=OPENCLAW_NO_RESPAWN=1
+Environment=DISPLAY=:0
+OVERRIDE
+
     chown -R $USER_NAME:$USER_NAME \$USER_HOME/.config
 
     mkdir -p "\$UNIT_DIR/default.target.wants"

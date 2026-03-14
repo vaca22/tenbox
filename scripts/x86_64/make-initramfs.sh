@@ -5,7 +5,7 @@
 #
 # Usage:
 #   ./make-initramfs.sh [output_dir] [suite]
-#     output_dir - where to place initramfs.cpio.gz (default: ../build/share)
+#     output_dir - where to place initramfs-x86_64.cpio.gz (default: ../build/share)
 #     suite      - Debian suite: bookworm(6.x), bullseye(5.x), etc. Default: bookworm
 set -e
 
@@ -62,39 +62,21 @@ cp "$WORKDIR/busybox" "$WORKDIR/initramfs/bin/"
 MODDIR="kmod_extract/lib/modules/$KVER/kernel"
 DESTDIR="$WORKDIR/initramfs/lib/modules"
 
-# Modules needed for virtio block/net/input/gpu/fs devices + ext4 filesystem support
+# Only modules required to reach rootfs on /dev/vda.
+# Everything else (network, GPU, audio, virtiofs, input) is loaded
+# on-demand by modprobe from /lib/modules/ inside the rootfs.
 VIRTIO_MODS=(
     "drivers/virtio/virtio.ko"
     "drivers/virtio/virtio_ring.ko"
     "drivers/virtio/virtio_mmio.ko"
     "drivers/block/virtio_blk.ko"
-    "net/core/failover.ko"
-    "drivers/net/net_failover.ko"
-    "drivers/net/virtio_net.ko"
     "drivers/char/virtio_console.ko"
-    "drivers/virtio/virtio_input.ko"
-    "drivers/input/evdev.ko"
-    "drivers/media/rc/rc-core.ko"
-    "drivers/media/cec/cec.ko"
-    "drivers/gpu/drm/drm.ko"
-    "drivers/gpu/drm/drm_kms_helper.ko"
-    "drivers/gpu/drm/drm_shmem_helper.ko"
-    "drivers/virtio/virtio_dma_buf.ko"
-    "drivers/gpu/drm/virtio/virtio-gpu.ko"
-    "fs/fuse/fuse.ko"
-    "fs/fuse/virtiofs.ko"
     "fs/mbcache.ko"
     "fs/jbd2/jbd2.ko"
     "lib/crc16.ko"
     "crypto/crc32c_generic.ko"
     "lib/libcrc32c.ko"
     "fs/ext4/ext4.ko"
-    # ALSA / virtio-snd modules for audio playback
-    "sound/soundcore.ko"
-    "sound/core/snd.ko"
-    "sound/core/snd-timer.ko"
-    "sound/core/snd-pcm.ko"
-    "sound/virtio/virtio_snd.ko"
 )
 
 copy_module() {
@@ -146,42 +128,11 @@ cat > "$WORKDIR/initramfs/init" << 'EOF'
 
 /bin/busybox --install -s /bin
 
-# Load virtio modules — device discovery is handled by ACPI DSDT
+# Load boot-essential modules only; everything else is loaded
+# on-demand by modprobe from /lib/modules/ inside the rootfs.
 MODDIR=/lib/modules
-for mod in virtio virtio_ring virtio_mmio virtio_blk failover net_failover virtio_net virtio_console virtio_input evdev; do
-    if [ -f "$MODDIR/$mod.ko" ]; then
-        insmod "$MODDIR/$mod.ko" 2>/dev/null && \
-            echo "Loaded: $mod" || echo "Failed: $mod"
-    fi
-done
-
-# Load DRM / virtio-gpu modules (order matters: rc-core before cec,
-# drm_shmem_helper before virtio-gpu)
-for mod in rc-core cec drm drm_kms_helper drm_shmem_helper virtio_dma_buf virtio-gpu; do
-    if [ -f "$MODDIR/$mod.ko" ]; then
-        insmod "$MODDIR/$mod.ko" 2>/dev/null && \
-            echo "Loaded: $mod" || echo "Failed: $mod"
-    fi
-done
-
-# Load ext4 filesystem modules
-for mod in crc16 crc32c_generic libcrc32c mbcache jbd2 ext4; do
-    if [ -f "$MODDIR/$mod.ko" ]; then
-        insmod "$MODDIR/$mod.ko" 2>/dev/null && \
-            echo "Loaded: $mod" || echo "Failed: $mod"
-    fi
-done
-
-# Load virtio-fs / fuse modules for shared folder support
-for mod in fuse virtiofs; do
-    if [ -f "$MODDIR/$mod.ko" ]; then
-        insmod "$MODDIR/$mod.ko" 2>/dev/null && \
-            echo "Loaded: $mod" || echo "Failed: $mod"
-    fi
-done
-
-# Load ALSA / virtio sound modules for audio playback
-for mod in soundcore snd snd-timer snd-pcm virtio_snd; do
+for mod in virtio virtio_ring virtio_mmio virtio_blk virtio_console \
+           crc16 crc32c_generic libcrc32c mbcache jbd2 ext4; do
     if [ -f "$MODDIR/$mod.ko" ]; then
         insmod "$MODDIR/$mod.ko" 2>/dev/null && \
             echo "Loaded: $mod" || echo "Failed: $mod"
@@ -243,14 +194,14 @@ chmod +x "$WORKDIR/initramfs/init"
 
 echo "[4/5] Packing initramfs..."
 cd "$WORKDIR/initramfs"
-find . | cpio -o -H newc --quiet | gzip -9 > "$WORKDIR/initramfs.cpio.gz"
+find . | cpio -o -H newc --quiet | gzip -9 > "$WORKDIR/initramfs-x86_64.cpio.gz"
 
-PACKED_SIZE=$(stat -c '%s' "$WORKDIR/initramfs.cpio.gz" 2>/dev/null || stat -f '%z' "$WORKDIR/initramfs.cpio.gz")
+PACKED_SIZE=$(stat -c '%s' "$WORKDIR/initramfs-x86_64.cpio.gz" 2>/dev/null || stat -f '%z' "$WORKDIR/initramfs-x86_64.cpio.gz")
 if [ "$PACKED_SIZE" -le 20 ]; then
-    echo "Error: initramfs.cpio.gz is too small (${PACKED_SIZE} bytes), packing likely failed." >&2
+    echo "Error: initramfs-x86_64.cpio.gz is too small (${PACKED_SIZE} bytes), packing likely failed." >&2
     exit 1
 fi
 
 echo "[5/5] Copying output..."
-cp "$WORKDIR/initramfs.cpio.gz" "$OUTDIR/initramfs.cpio.gz"
-echo "Done: $OUTDIR/initramfs.cpio.gz ($(ls -lh "$OUTDIR/initramfs.cpio.gz" | awk '{print $5}'))"
+cp "$WORKDIR/initramfs-x86_64.cpio.gz" "$OUTDIR/initramfs-x86_64.cpio.gz"
+echo "Done: $OUTDIR/initramfs-x86_64.cpio.gz ($(ls -lh "$OUTDIR/initramfs-x86_64.cpio.gz" | awk '{print $5}'))"

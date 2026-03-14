@@ -1,0 +1,198 @@
+name: Build Initramfs
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "Architectures to build"
+        required: true
+        type: choice
+        options:
+          - both
+          - x86_64
+          - arm64
+        default: both
+      upload_to_oss:
+        description: "Upload initramfs to OSS after build"
+        required: true
+        type: boolean
+        default: true
+      update_images_json:
+        description: "Update images.json after build"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  build-x86_64:
+    if: inputs.arch == 'both' || inputs.arch == 'x86_64'
+    runs-on: ubuntu-latest
+    name: "initramfs (x86_64)"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./scripts/docker/build.sh x86_64 initramfs
+
+      - name: Find output
+        id: find
+        run: |
+          FILE="build/share/initramfs-x86_64.cpio.gz"
+          if [ ! -f "$FILE" ]; then
+            echo "initramfs-x86_64.cpio.gz not found in build/share/"
+            exit 1
+          fi
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$FILE")" >> "$GITHUB_OUTPUT"
+          SHA256=$(sha256sum "$FILE" | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c%s "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "Found: $FILE ($(du -h "$FILE" | cut -f1), sha256: $SHA256)"
+
+      - name: Upload to OSS
+        if: inputs.upload_to_oss
+        env:
+          OSS_REGION: ${{ secrets.OSS_REGION }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET_NAME: ${{ secrets.OSS_BUCKET_NAME }}
+          OSS_PUBLIC_URL: https://files.xiaozhi.me
+          OSS_TENBOX_IMAGES_DIR: tenbox/images
+        run: |
+          pip install oss2 alibabacloud_cdn20180510
+          python3 scripts/ci/upload_to_oss.py \
+            "${{ steps.find.outputs.path }}" \
+            initramfs \
+            x86_64
+
+      - name: Save build metadata
+        if: inputs.update_images_json
+        run: |
+          mkdir -p /tmp/meta
+          cat > /tmp/meta/x86_64.json <<EOF
+          {
+            "arch": "x86_64",
+            "filename": "${{ steps.find.outputs.name }}",
+            "sha256": "${{ steps.find.outputs.sha256 }}",
+            "size": ${{ steps.find.outputs.size }}
+          }
+          EOF
+
+      - name: Upload build metadata
+        if: inputs.update_images_json
+        uses: actions/upload-artifact@v4
+        with:
+          name: meta-initramfs-x86_64
+          path: /tmp/meta/x86_64.json
+          retention-days: 1
+
+  build-arm64:
+    if: inputs.arch == 'both' || inputs.arch == 'arm64'
+    runs-on: ubuntu-24.04-arm
+    name: "initramfs (arm64)"
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: ./scripts/docker/build.sh arm64 initramfs
+
+      - name: Find output
+        id: find
+        run: |
+          FILE="build/share/initramfs-arm64.cpio.gz"
+          if [ ! -f "$FILE" ]; then
+            echo "initramfs-arm64.cpio.gz not found in build/share/"
+            exit 1
+          fi
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$FILE")" >> "$GITHUB_OUTPUT"
+          SHA256=$(sha256sum "$FILE" | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c%s "$FILE")" >> "$GITHUB_OUTPUT"
+          echo "Found: $FILE ($(du -h "$FILE" | cut -f1), sha256: $SHA256)"
+
+      - name: Upload to OSS
+        if: inputs.upload_to_oss
+        env:
+          OSS_REGION: ${{ secrets.OSS_REGION }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET_NAME: ${{ secrets.OSS_BUCKET_NAME }}
+          OSS_PUBLIC_URL: https://files.xiaozhi.me
+          OSS_TENBOX_IMAGES_DIR: tenbox/images
+        run: |
+          pip install oss2 alibabacloud_cdn20180510
+          python3 scripts/ci/upload_to_oss.py \
+            "${{ steps.find.outputs.path }}" \
+            initramfs \
+            arm64
+
+      - name: Save build metadata
+        if: inputs.update_images_json
+        run: |
+          mkdir -p /tmp/meta
+          cat > /tmp/meta/arm64.json <<EOF
+          {
+            "arch": "arm64",
+            "filename": "${{ steps.find.outputs.name }}",
+            "sha256": "${{ steps.find.outputs.sha256 }}",
+            "size": ${{ steps.find.outputs.size }}
+          }
+          EOF
+
+      - name: Upload build metadata
+        if: inputs.update_images_json
+        uses: actions/upload-artifact@v4
+        with:
+          name: meta-initramfs-arm64
+          path: /tmp/meta/arm64.json
+          retention-days: 1
+
+  update-images-json:
+    if: >-
+      always()
+      && inputs.update_images_json
+      && (needs.build-x86_64.result == 'success' || needs.build-arm64.result == 'success')
+    needs: [build-x86_64, build-arm64]
+    runs-on: ubuntu-latest
+    name: "Update images.json"
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all metadata
+        uses: actions/download-artifact@v4
+        with:
+          pattern: meta-initramfs-*
+          path: /tmp/meta
+          merge-multiple: true
+
+      - name: List metadata
+        run: ls -la /tmp/meta/ && cat /tmp/meta/*.json
+
+      - name: Update images.json
+        env:
+          OSS_PUBLIC_URL: https://files.xiaozhi.me
+          OSS_TENBOX_IMAGES_DIR: tenbox/images
+        run: |
+          python3 scripts/ci/update_images_json.py \
+            --target initramfs \
+            --meta-dir /tmp/meta
+
+      - name: Create branch, commit and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add website/public/api/images.json
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          BRANCH="ci/update-initramfs-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH"
+          git commit -m "ci: update initramfs"
+          git push -u origin "$BRANCH"
+          gh pr create --title "ci: update initramfs" --body "Auto-generated by Build Initramfs workflow." --base main
