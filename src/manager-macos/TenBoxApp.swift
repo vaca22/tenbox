@@ -343,7 +343,7 @@ class AppState: ObservableObject {
         guard let session = activeSessions[vmId], session.ipcClient.isConnected,
               let vm = vms.first(where: { $0.id == vmId }) else { return }
         let entries = vm.portForwards.map { pf in
-            "\(pf.hostPort):\(pf.guestPort)"
+            "tcp:\(pf.lan ? "0.0.0.0" : "127.0.0.1"):\(pf.hostPort)-:\(pf.guestPort)"
         }
         session.ipcClient.sendPortForwardsUpdate(entries: entries, netEnabled: vm.netEnabled)
     }

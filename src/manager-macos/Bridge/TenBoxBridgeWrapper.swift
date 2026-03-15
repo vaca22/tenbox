@@ -11,7 +11,7 @@ class TenBoxBridgeWrapper {
                 SharedFolder(tag: sf.tag, hostPath: sf.hostPath, readonly: sf.readonly_, bookmark: sf.bookmark)
             }
             let pfs = info.portForwards.map { pf in
-                PortForward(hostPort: pf.hostPort, guestPort: pf.guestPort)
+                PortForward(hostPort: pf.hostPort, guestPort: pf.guestPort, lan: pf.lan)
             }
             return VmInfo(
                 id: info.vmId,
@@ -97,6 +97,7 @@ class TenBoxBridgeWrapper {
         let objcPf = TBPortForward()
         objcPf.hostPort = pf.hostPort
         objcPf.guestPort = pf.guestPort
+        objcPf.lan = pf.lan
         return bridge.add(objcPf, toVm: vmId)
     }
 

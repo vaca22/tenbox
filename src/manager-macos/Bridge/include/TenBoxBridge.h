@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface TBPortForward : NSObject
 @property (nonatomic, assign) uint16_t hostPort;
 @property (nonatomic, assign) uint16_t guestPort;
+@property (nonatomic, assign) BOOL lan;
 @end
 
 @interface TBSharedFolder : NSObject

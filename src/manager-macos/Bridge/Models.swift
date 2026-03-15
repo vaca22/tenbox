@@ -48,6 +48,7 @@ struct PortForward: Identifiable, Codable, Equatable {
     var id: String { "\(hostPort):\(guestPort)" }
     let hostPort: UInt16
     let guestPort: UInt16
+    var lan: Bool = false
 }
 
 struct VmInfo: Identifiable, Codable {

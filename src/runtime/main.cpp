@@ -92,7 +92,9 @@ static void PrintUsage(const char* prog) {
         "  --cpus <N>           Number of vCPUs (default: 1, max: 128)\n"
         "  --net                Start with network link up (default: link down)\n"
         "  --debug              Enable debug mode (verbose kernel output)\n"
-        "  --forward H:G        Port forward host:H -> guest:G (repeatable)\n"
+        "  --forward <hostfwd>  Port forward (repeatable), e.g.:\n"
+        "                         tcp:127.0.0.1:8080-:80  (loopback)\n"
+        "                         tcp:0.0.0.0:8080-:80    (LAN accessible)\n"
         "  --share TAG:PATH[:ro] Share host directory (repeatable)\n"
         "  --version            Show version\n"
         "  --help               Show this help\n",
@@ -183,13 +185,12 @@ int main(int argc, char* argv[]) {
             config.debug_mode = true;
         } else if (Arg("--forward")) {
             auto v = NextArg(); if (!v) return 1;
-            unsigned hp = 0, gp = 0;
-            if (std::sscanf(v, "%u:%u", &hp, &gp) == 2 && hp && gp) {
-                config.port_forwards.push_back({
-                    static_cast<uint16_t>(hp),
-                    static_cast<uint16_t>(gp)});
+            PortForward pf;
+            if (PortForward::FromHostfwd(v, pf)) {
+                config.port_forwards.push_back(pf);
             } else {
-                fprintf(stderr, "Invalid --forward format: %s (expected H:G)\n", v);
+                fprintf(stderr, "Invalid --forward format: %s\n"
+                        "  Expected: tcp:ADDR:HPORT-:GPORT  (e.g. tcp:127.0.0.1:8080-:80)\n", v);
                 return 1;
             }
         } else if (Arg("--share")) {

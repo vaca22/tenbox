@@ -657,11 +657,9 @@ void RuntimeControlService::HandleMessage(const ipc::Message& message) {
                 for (int i = 0; i < count; ++i) {
                     auto it_f = message.fields.find("forward_" + std::to_string(i));
                     if (it_f == message.fields.end()) continue;
-                    unsigned hp = 0, gp = 0;
-                    if (std::sscanf(it_f->second.c_str(), "%u:%u", &hp, &gp) == 2
-                        && hp && gp) {
-                        forwards.push_back({static_cast<uint16_t>(hp),
-                                            static_cast<uint16_t>(gp)});
+                    PortForward pf;
+                    if (PortForward::FromHostfwd(it_f->second.c_str(), pf)) {
+                        forwards.push_back(pf);
                     }
                 }
             }

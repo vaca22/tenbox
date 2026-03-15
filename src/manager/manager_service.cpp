@@ -389,8 +389,7 @@ bool ManagerService::EditVm(const std::string& vm_id, const VmMutablePatch& patc
         msg.fields["forward_count"] = std::to_string(vm.spec.port_forwards.size());
         for (size_t i = 0; i < vm.spec.port_forwards.size(); ++i) {
             msg.fields["forward_" + std::to_string(i)] =
-                std::to_string(vm.spec.port_forwards[i].host_port) + ":" +
-                std::to_string(vm.spec.port_forwards[i].guest_port);
+                vm.spec.port_forwards[i].ToHostfwd();
         }
         SendRuntimeMessage(vm, msg);
     }
@@ -1150,8 +1149,7 @@ bool ManagerService::AddPortForward(const std::string& vm_id, const PortForward&
         msg.fields["forward_count"] = std::to_string(vm.spec.port_forwards.size());
         for (size_t i = 0; i < vm.spec.port_forwards.size(); ++i) {
             msg.fields["forward_" + std::to_string(i)] =
-                std::to_string(vm.spec.port_forwards[i].host_port) + ":" +
-                std::to_string(vm.spec.port_forwards[i].guest_port);
+                vm.spec.port_forwards[i].ToHostfwd();
         }
         SendRuntimeMessage(vm, msg);
     }
@@ -1190,8 +1188,7 @@ bool ManagerService::RemovePortForward(const std::string& vm_id, uint16_t host_p
         msg.fields["forward_count"] = std::to_string(vm.spec.port_forwards.size());
         for (size_t i = 0; i < vm.spec.port_forwards.size(); ++i) {
             msg.fields["forward_" + std::to_string(i)] =
-                std::to_string(vm.spec.port_forwards[i].host_port) + ":" +
-                std::to_string(vm.spec.port_forwards[i].guest_port);
+                vm.spec.port_forwards[i].ToHostfwd();
         }
         SendRuntimeMessage(vm, msg);
     }
@@ -1762,9 +1759,8 @@ void ManagerService::HandleIncomingMessage(const std::string& vm_id, const ipc::
                 pf_msg.type = "runtime.update_network";
                 pf_msg.fields["forward_count"] = std::to_string(forwards_to_send.size());
                 for (size_t i = 0; i < forwards_to_send.size(); ++i) {
-                    const auto& pf = forwards_to_send[i];
                     pf_msg.fields["forward_" + std::to_string(i)] =
-                        std::to_string(pf.host_port) + ":" + std::to_string(pf.guest_port);
+                        forwards_to_send[i].ToHostfwd();
                 }
                 std::lock_guard<std::mutex> lock(vms_mutex_);
                 VmRecord* vm = FindVm(vm_id);

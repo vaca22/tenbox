@@ -133,6 +133,7 @@ struct AddPortForwardSheet: View {
 
     @State private var hostPortText = ""
     @State private var guestPortText = ""
+    @State private var lanEnabled = false
 
     private var hostPort: UInt16? { UInt16(hostPortText) }
     private var guestPort: UInt16? { UInt16(guestPortText) }
@@ -153,6 +154,7 @@ struct AddPortForwardSheet: View {
                     .disableAutocorrection(true)
                 TextField("Guest Port", text: $guestPortText)
                     .disableAutocorrection(true)
+                Toggle("LAN accessible", isOn: $lanEnabled)
             }
             .padding(.horizontal)
 
@@ -166,12 +168,12 @@ struct AddPortForwardSheet: View {
             }
             .padding()
         }
-        .frame(width: 340, height: 220)
+        .frame(width: 340, height: 240)
     }
 
     private func addPortForward() {
         guard let hp = hostPort, let gp = guestPort else { return }
-        let pf = PortForward(hostPort: hp, guestPort: gp)
+        let pf = PortForward(hostPort: hp, guestPort: gp, lan: lanEnabled)
         appState.addPortForward(pf, toVm: vmId)
         dismiss()
     }
@@ -281,15 +283,24 @@ struct PortForwardsSheet: View {
                     List {
                         ForEach(vm.portForwards) { pf in
                             HStack(spacing: 8) {
-                                Image(systemName: "network")
+                                Image(systemName: pf.lan ? "globe" : "network")
                                     .foregroundStyle(.secondary)
-                                Text(verbatim: "127.0.0.1:\(pf.hostPort)")
+                                Text(verbatim: "\(pf.lan ? "0.0.0.0" : "127.0.0.1"):\(pf.hostPort)")
                                     .fontWeight(.medium)
                                 Image(systemName: "arrow.right")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text(verbatim: "guest:\(pf.guestPort)")
                                     .foregroundStyle(.secondary)
+                                if pf.lan {
+                                    Text("LAN")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(.orange.opacity(0.2))
+                                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                                        .foregroundStyle(.orange)
+                                }
                                 Spacer()
                                 Button(role: .destructive) {
                                     appState.removePortForward(hostPort: pf.hostPort, fromVm: vmId)

@@ -52,6 +52,11 @@ public:
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | style);
     }
 
+    void AddCheckBox(int id, const char* text, int x, int y, int cx, int cy) {
+        AddItem(id, 0x0080, text, x, y, cx, cy,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX);
+    }
+
     void AddDefButton(int id, const char* text, int x, int y, int cx, int cy) {
         AddButton(id, text, x, y, cx, cy, BS_DEFPUSHBUTTON);
     }
@@ -153,8 +158,9 @@ static void PfRefreshList(PfDlgData* data) {
     auto forwards = data->mgr->GetPortForwards(data->vm_id);
     for (size_t i = 0; i < forwards.size(); ++i) {
         const auto& pf = forwards[i];
-        wchar_t buf[80];
-        swprintf_s(buf, L"127.0.0.1:%u (Host)  \u2192  127.0.0.1:%u (Guest)", pf.host_port, pf.guest_port);
+        wchar_t buf[100];
+        swprintf_s(buf, L"%s:%u (Host)  \u2192  127.0.0.1:%u (Guest)",
+                   pf.lan ? L"0.0.0.0" : L"127.0.0.1", pf.host_port, pf.guest_port);
 
         LVITEMW item{};
         item.mask = LVIF_TEXT;
@@ -167,6 +173,7 @@ static void PfRefreshList(PfDlgData* data) {
 enum AddPfDlgId {
     IDC_APF_HOST_PORT  = 400,
     IDC_APF_GUEST_PORT = 401,
+    IDC_APF_LAN_CHECK  = 402,
 };
 
 struct AddPfDlgData {
@@ -204,6 +211,7 @@ static INT_PTR CALLBACK AddPfDlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             PortForward pf;
             pf.host_port = static_cast<uint16_t>(host_port);
             pf.guest_port = static_cast<uint16_t>(guest_port);
+            pf.lan = (IsDlgButtonChecked(dlg, IDC_APF_LAN_CHECK) == BST_CHECKED);
 
             std::string error;
             if (data->mgr->AddPortForward(data->vm_id, pf, &error)) {
@@ -231,7 +239,7 @@ static INT_PTR CALLBACK AddPfDlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 static bool ShowAddPortForwardDialog(HWND parent, ManagerService& mgr, const std::string& vm_id) {
     using S = i18n::S;
     DlgBuilder b;
-    int W = 180, H = 90;
+    int W = 180, H = 108;
     b.Begin(i18n::tr(S::kPfAddTitle), 0, 0, W, H,
         WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT);
 
@@ -243,7 +251,10 @@ static bool ShowAddPortForwardDialog(HWND parent, ManagerService& mgr, const std
 
     b.AddStatic(0, i18n::tr(S::kPfLabelGuestPort), lx, y, lw, rh);
     b.AddEdit(IDC_APF_GUEST_PORT, ex, y - 2, ew, rh, ES_NUMBER);
-    y += sp + 8;
+    y += sp;
+
+    b.AddCheckBox(IDC_APF_LAN_CHECK, i18n::tr(S::kPfLabelLan), lx, y, 120, rh);
+    y += sp + 4;
 
     int btn_w = 50, btn_h = 14;
     int btn_x = W - btn_w - 8;

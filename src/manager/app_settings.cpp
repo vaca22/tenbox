@@ -236,10 +236,11 @@ bool LoadVmManifest(const std::string& vm_dir, VmSpec& spec) {
         if (j.contains("port_forwards") && j["port_forwards"].is_array()) {
             for (auto& item : j["port_forwards"]) {
                 if (item.contains("host_port") && item.contains("guest_port")) {
-                    spec.port_forwards.push_back({
-                        item["host_port"].get<uint16_t>(),
-                        item["guest_port"].get<uint16_t>()
-                    });
+                    PortForward pf;
+                    pf.host_port = item["host_port"].get<uint16_t>();
+                    pf.guest_port = item["guest_port"].get<uint16_t>();
+                    if (item.contains("lan")) pf.lan = item["lan"].get<bool>();
+                    spec.port_forwards.push_back(pf);
                 }
             }
         }
@@ -298,7 +299,9 @@ void SaveVmManifest(const VmSpec& spec) {
 
     json fwds = json::array();
     for (const auto& f : spec.port_forwards) {
-        fwds.push_back({{"host_port", f.host_port}, {"guest_port", f.guest_port}});
+        json fj = {{"host_port", f.host_port}, {"guest_port", f.guest_port}};
+        if (f.lan) fj["lan"] = true;
+        fwds.push_back(std::move(fj));
     }
     j["port_forwards"] = fwds;
 

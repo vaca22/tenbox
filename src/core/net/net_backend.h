@@ -129,6 +129,9 @@ private:
 
     std::thread net_thread_;
     std::atomic<bool> running_{false};
+    std::mutex loop_ready_mutex_;
+    std::condition_variable loop_ready_cv_;
+    bool loop_ready_{false};
 
     // TX queue (vCPU → net thread)
     std::mutex tx_mutex_;
@@ -176,6 +179,7 @@ private:
         NetBackend* backend = nullptr;
         uint16_t host_port;
         uint16_t guest_port;
+        bool lan = false;
         uintptr_t listener = ~(uintptr_t)0;
         PollHandle listener_poll;
         struct Conn {

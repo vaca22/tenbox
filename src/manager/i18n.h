@@ -206,6 +206,7 @@ enum class S {
     kMenuClone,
     kStatusVmCloned,
     kStatusVmCloning,
+    kPfLabelLan,
     kPfBindErrorTitle,
     kPfBindErrorMsg,
 

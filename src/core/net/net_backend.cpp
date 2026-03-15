@@ -99,10 +99,14 @@ bool NetBackend::Start(VirtioNetDevice* dev,
         pf.backend = this;
         pf.host_port = f.host_port;
         pf.guest_port = f.guest_port;
+        pf.lan = f.lan;
     }
 
-    running_ = true;
     net_thread_ = std::thread(&NetBackend::NetworkThread, this);
+
+    std::unique_lock<std::mutex> lock(loop_ready_mutex_);
+    loop_ready_cv_.wait(lock, [this] { return loop_ready_; });
+    running_ = true;
     return true;
 }
 
@@ -416,6 +420,12 @@ void NetBackend::NetworkThread() {
 
     stop_wakeup_.data = this;
     uv_async_init(&loop_, &stop_wakeup_, OnStopSignal);
+
+    {
+        std::lock_guard<std::mutex> lock(loop_ready_mutex_);
+        loop_ready_ = true;
+    }
+    loop_ready_cv_.notify_one();
 
     SetupPortForwards();
 

@@ -1,18 +1,18 @@
 {
-  "latest_version": "0.4.5",
+  "latest_version": "0.4.8",
   "min_supported_version": "0.1.0",
-  "release_notes": "修复偶尔启动虚拟机黑屏问题\n支持虚拟机通过 10.0.2.2 访问主机服务\n默认关闭 Linux 内核日志\n优化设备性能",
-  "release_date": "2026-03-13",
-  "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox_0.4.5.msi",
-  "sha256": "15c6391a6b4d94cfb0e1db6f861bfd1022cf8527c7c992f561a3221b7f7ff970",
+  "release_notes": "修复偶尔端口转发失败的问题\n端口转发设置增加局域网访问选项\n修复磁盘IO线程初始化失败的问题",
+  "release_date": "2026-03-15",
+  "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox_0.4.8.msi",
+  "sha256": "592b287093660a22c33676e6cc04e30586c139e925496309958673d17b0e67f8",
   "platforms": {
     "windows": {
-      "latest_version": "0.4.5",
-      "release_notes": "修复偶尔启动虚拟机黑屏问题\n支持虚拟机通过 10.0.2.2 访问主机服务\n默认关闭 Linux 内核日志\n优化设备性能",
-      "release_date": "2026-03-13",
-      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox_0.4.5.msi",
-      "sha256": "15c6391a6b4d94cfb0e1db6f861bfd1022cf8527c7c992f561a3221b7f7ff970",
-      "size": 2162688,
+      "latest_version": "0.4.8",
+      "release_notes": "修复偶尔端口转发失败的问题\n端口转发设置增加局域网访问选项\n修复磁盘IO线程初始化失败的问题",
+      "release_date": "2026-03-15",
+      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox_0.4.8.msi",
+      "sha256": "592b287093660a22c33676e6cc04e30586c139e925496309958673d17b0e67f8",
+      "size": 2146304,
       "min_os": "Windows 10"
     },
     "macos": {

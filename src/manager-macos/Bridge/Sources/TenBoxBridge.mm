@@ -1,4 +1,5 @@
 #import "TenBoxBridge.h"
+#include "common/vm_model.h"
 #include "ipc/unix_socket.h"
 #include "ipc/protocol_v1.h"
 #include <string>
@@ -185,6 +186,7 @@ static NSString* GetVmsDir() {
                     TBPortForward* pf = [[TBPortForward alloc] init];
                     pf.hostPort = [hp unsignedShortValue];
                     pf.guestPort = [gp unsignedShortValue];
+                    pf.lan = [pfDict[@"lan"] boolValue];
                     [pfs addObject:pf];
                 }
             }
@@ -335,7 +337,9 @@ static NSString* GetVmsDir() {
             NSNumber* gp = pf[@"guest_port"];
             if (hp && gp) {
                 [args addObject:@"--forward"];
-                [args addObject:[NSString stringWithFormat:@"%u:%u",
+                BOOL lan = [pf[@"lan"] boolValue];
+                [args addObject:[NSString stringWithFormat:@"tcp:%s:%u-:%u",
+                    lan ? "0.0.0.0" : "127.0.0.1",
                     [hp unsignedShortValue], [gp unsignedShortValue]]];
             }
         }
@@ -790,10 +794,12 @@ static void SendSharedFoldersUpdate(const std::string& vmIdStr,
 // ── Port forward helpers ─────────────────────────────────────────
 
 static NSDictionary* PortForwardToJson(TBPortForward* pf) {
-    return @{
+    NSMutableDictionary* d = [@{
         @"host_port": @(pf.hostPort),
         @"guest_port": @(pf.guestPort),
-    };
+    } mutableCopy];
+    if (pf.lan) d[@"lan"] = @YES;
+    return d;
 }
 
 static void SendPortForwardsUpdate(const std::string& vmIdStr,
@@ -811,10 +817,11 @@ static void SendPortForwardsUpdate(const std::string& vmIdStr,
     msg.fields["forward_count"] = std::to_string(pfJsonArray.count);
     for (NSUInteger i = 0; i < pfJsonArray.count; ++i) {
         NSDictionary* pf = pfJsonArray[i];
-        uint16_t hp = [pf[@"host_port"] unsignedShortValue];
-        uint16_t gp = [pf[@"guest_port"] unsignedShortValue];
-        msg.fields["forward_" + std::to_string(i)] =
-            std::to_string(hp) + ":" + std::to_string(gp);
+        PortForward fwd;
+        fwd.host_port = [pf[@"host_port"] unsignedShortValue];
+        fwd.guest_port = [pf[@"guest_port"] unsignedShortValue];
+        fwd.lan = [pf[@"lan"] boolValue];
+        msg.fields["forward_" + std::to_string(i)] = fwd.ToHostfwd();
     }
     it->second->Send(ipc::Encode(msg));
 }
@@ -894,6 +901,7 @@ static void SendPortForwardsUpdate(const std::string& vmIdStr,
                 TBPortForward* pf = [[TBPortForward alloc] init];
                 pf.hostPort = [hp unsignedShortValue];
                 pf.guestPort = [gp unsignedShortValue];
+                pf.lan = [d[@"lan"] boolValue];
                 [result addObject:pf];
             }
         }
