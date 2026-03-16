@@ -52,11 +52,11 @@ enum CmdId : UINT {
     IDM_PORT_FORWARDS  = 1023,
     IDM_CLONE          = 1024,
     IDM_VIEW_TOOLBAR           = 1017,
-    IDM_VIEW_ADAPTIVE_DISPLAY  = 1018,
     IDM_WEBSITE        = 1020,
     IDM_CHECK_UPDATE  = 1021,
     IDM_ABOUT         = 1022,
     IDM_SETTINGS      = 1025,
+    IDM_DPI_ZOOM      = 1026,
 };
 
 // ── Control IDs ──
@@ -76,7 +76,19 @@ static constexpr UINT WM_INVOKE = WM_APP + 100;
 static ULONGLONG g_clipboard_suppress_until = 0;
 static constexpr ULONGLONG kClipboardSuppressMs = 500;
 
-static constexpr int kDefaultLeftPaneWidth = 280;
+static int ScaleDpi(int px, UINT dpi) { return MulDiv(px, static_cast<int>(dpi), 96); }
+
+static UINT GetWindowDpi(HWND hwnd) {
+    UINT dpi = GetDpiForWindow(hwnd);
+    if (dpi == 0) {
+        HDC hdc = GetDC(hwnd);
+        dpi = static_cast<UINT>(GetDeviceCaps(hdc, LOGPIXELSX));
+        ReleaseDC(hwnd, hdc);
+    }
+    return dpi ? dpi : 96;
+}
+
+static constexpr int kDefaultLeftPaneWidth96 = 280;
 
 // ── Forward declarations for dialog helpers ──
 
@@ -137,6 +149,24 @@ struct Win32UiShell::Impl {
 
     HFONT ui_font     = nullptr;
     HFONT mono_font   = nullptr;
+    UINT  dpi         = 96;
+
+    int Dpi(int px96) const { return ScaleDpi(px96, dpi); }
+
+    void RecreateMonoFont() {
+        if (mono_font) DeleteObject(mono_font);
+        mono_font = CreateFontW(-MulDiv(10, static_cast<int>(dpi), 72), 0, 0, 0, FW_NORMAL,
+            FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+            FIXED_PITCH | FF_MODERN, L"Consolas");
+    }
+
+    void RecreateUiFont() {
+        if (ui_font) DeleteObject(ui_font);
+        NONCLIENTMETRICSW ncm{sizeof(ncm)};
+        SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0, dpi);
+        ui_font = CreateFontIndirectW(&ncm.lfMessageFont);
+    }
 
     // Components
     VmListView vm_listview;
@@ -148,13 +178,14 @@ struct Win32UiShell::Impl {
     int selected_index = -1;
 
     // Splitter between left pane (VM list) and right pane (tabs)
-    int left_pane_width = kDefaultLeftPaneWidth;
+    int left_pane_width = kDefaultLeftPaneWidth96;
     bool splitter_dragging = false;
     int splitter_drag_start_x = 0;
     int splitter_drag_start_width = 0;
-    static constexpr int kSplitterWidth    = 4;
-    static constexpr int kMinLeftPaneWidth = 180;
-    static constexpr int kMaxLeftPaneWidth = 500;
+
+    int SplitterWidth()    const { return Dpi(4); }
+    int MinLeftPaneWidth() const { return Dpi(180); }
+    int MaxLeftPaneWidth() const { return Dpi(500); }
 
     std::unordered_map<std::string, VmUiState> vm_ui_states;
     std::unordered_map<std::string, std::unique_ptr<WasapiAudioPlayer>> audio_players;
@@ -225,7 +256,7 @@ static ATOM RegisterMainClass(HINSTANCE hinst) {
 
 // ── Menu building ──
 
-static HMENU BuildMenuBar(bool show_toolbar, bool adaptive_display) {
+static HMENU BuildMenuBar(bool show_toolbar) {
     using S = i18n::S;
     HMENU bar = CreateMenu();
 
@@ -254,8 +285,6 @@ static HMENU BuildMenuBar(bool show_toolbar, bool adaptive_display) {
     HMENU view_menu = CreatePopupMenu();
     AppendMenuW(view_menu, MF_STRING | (show_toolbar ? MF_CHECKED : MF_UNCHECKED),
                IDM_VIEW_TOOLBAR, i18n::tr_w(S::kMenuViewToolbar).c_str());
-    AppendMenuW(view_menu, MF_STRING | (adaptive_display ? MF_CHECKED : MF_UNCHECKED),
-               IDM_VIEW_ADAPTIVE_DISPLAY, i18n::tr_w(S::kMenuViewAdaptiveDisplay).c_str());
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(view_menu), i18n::tr_w(S::kMenuView).c_str());
 
     HMENU help_menu = CreatePopupMenu();
@@ -270,9 +299,9 @@ static HMENU BuildMenuBar(bool show_toolbar, bool adaptive_display) {
 
 // ── Toolbar building ──
 
-static constexpr int kToolbarIconSize = 48;
+static constexpr int kToolbarIconSize96 = 32;
 
-static HIMAGELIST CreateToolbarImageList(HINSTANCE hinst) {
+static HIMAGELIST CreateToolbarImageList(HINSTANCE hinst, int icon_size) {
     const UINT bmp_ids[] = {
         IDB_TOOLBAR_NEW_VM,
         IDB_TOOLBAR_EDIT,
@@ -283,17 +312,18 @@ static HIMAGELIST CreateToolbarImageList(HINSTANCE hinst) {
         IDB_TOOLBAR_SHUTDOWN,
         IDB_TOOLBAR_SHARED_FOLDERS,
         IDB_TOOLBAR_PORT_FORWARDS,
+        IDB_TOOLBAR_DPI_ZOOM,
     };
 
     HIMAGELIST hil = ImageList_Create(
-        kToolbarIconSize, kToolbarIconSize,
-        ILC_COLOR32 | ILC_MASK, 9, 0);
+        icon_size, icon_size,
+        ILC_COLOR32 | ILC_MASK, 10, 0);
     if (!hil) return nullptr;
 
     for (UINT id : bmp_ids) {
         HBITMAP hbm = static_cast<HBITMAP>(LoadImageW(
             hinst, MAKEINTRESOURCEW(id), IMAGE_BITMAP,
-            kToolbarIconSize, kToolbarIconSize, LR_CREATEDIBSECTION));
+            icon_size, icon_size, LR_CREATEDIBSECTION));
         if (hbm) {
             ImageList_AddMasked(hil, hbm, RGB(255, 0, 255));
             DeleteObject(hbm);
@@ -305,35 +335,39 @@ static HIMAGELIST CreateToolbarImageList(HINSTANCE hinst) {
     return hil;
 }
 
-static HWND CreateToolbar(HWND parent, HINSTANCE hinst) {
+static HWND CreateToolbar(HWND parent, HINSTANCE hinst, UINT dpi) {
     HWND tb = CreateWindowExW(0, TOOLBARCLASSNAMEW, nullptr,
         WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | CCS_TOP,
         0, 0, 0, 0, parent, reinterpret_cast<HMENU>(IDC_TOOLBAR), hinst, nullptr);
 
     SendMessage(tb, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
 
-    HIMAGELIST hil = CreateToolbarImageList(hinst);
+    int icon_size = ScaleDpi(kToolbarIconSize96, dpi);
+    HIMAGELIST hil = CreateToolbarImageList(hinst, icon_size);
     bool has_icons = (hil != nullptr);
     if (has_icons) {
         SendMessage(tb, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(hil));
-        SendMessage(tb, TB_SETPADDING, 0, MAKELPARAM(20, 12));
+        SendMessage(tb, TB_SETPADDING, 0, MAKELPARAM(ScaleDpi(14, dpi), ScaleDpi(8, dpi)));
     } else {
-        SendMessage(tb, TB_SETPADDING, 0, MAKELPARAM(16, 6));
+        SendMessage(tb, TB_SETPADDING, 0, MAKELPARAM(ScaleDpi(10, dpi), ScaleDpi(4, dpi)));
     }
 
     using S = i18n::S;
-    const struct { UINT id; const char* text; int icon_idx; } items[] = {
-        {IDM_NEW_VM,        i18n::tr(S::kToolbarNewVm),       0},
-        {IDM_EDIT,          i18n::tr(S::kToolbarEdit),        1},
-        {IDM_DELETE,        i18n::tr(S::kToolbarDelete),      2},
-        {0,                 nullptr,                          -1},
-        {IDM_START,         i18n::tr(S::kToolbarStart),       3},
-        {IDM_STOP,          i18n::tr(S::kToolbarStop),        4},
-        {IDM_REBOOT,        i18n::tr(S::kToolbarReboot),      5},
-        {IDM_SHUTDOWN,      i18n::tr(S::kToolbarShutdown),    6},
-        {0,                 nullptr,                          -1},
-        {IDM_SHARED_FOLDERS,i18n::tr(S::kToolbarSharedFolders),  7},
-        {IDM_PORT_FORWARDS, i18n::tr(S::kToolbarPortForwards),   8},
+    struct ToolbarItem { UINT id; const char* text; int icon_idx; BYTE extra_style; };
+    const ToolbarItem items[] = {
+        {IDM_NEW_VM,        i18n::tr(S::kToolbarNewVm),          0, 0},
+        {IDM_EDIT,          i18n::tr(S::kToolbarEdit),           1, 0},
+        {IDM_DELETE,        i18n::tr(S::kToolbarDelete),         2, 0},
+        {0,                 nullptr,                             -1, 0},
+        {IDM_START,         i18n::tr(S::kToolbarStart),          3, 0},
+        {IDM_STOP,          i18n::tr(S::kToolbarStop),           4, 0},
+        {IDM_REBOOT,        i18n::tr(S::kToolbarReboot),         5, 0},
+        {IDM_SHUTDOWN,      i18n::tr(S::kToolbarShutdown),       6, 0},
+        {0,                 nullptr,                             -1, 0},
+        {IDM_SHARED_FOLDERS,i18n::tr(S::kToolbarSharedFolders),  7, 0},
+        {IDM_PORT_FORWARDS, i18n::tr(S::kToolbarPortForwards),   8, 0},
+        {0,                 nullptr,                             -1, 0},
+        {IDM_DPI_ZOOM,      i18n::tr(S::kToolbarDpiZoom),        9, BTNS_CHECK},
     };
 
     std::vector<std::wstring> wtexts;
@@ -350,7 +384,7 @@ static HWND CreateToolbar(HWND parent, HINSTANCE hinst) {
             btn.iBitmap   = has_icons ? item.icon_idx : I_IMAGENONE;
             btn.idCommand = item.id;
             btn.fsState   = TBSTATE_ENABLED;
-            btn.fsStyle   = BTNS_BUTTON | BTNS_AUTOSIZE;
+            btn.fsStyle   = BTNS_BUTTON | BTNS_AUTOSIZE | item.extra_style;
             btn.iString   = reinterpret_cast<INT_PTR>(wtexts[i].c_str());
         }
         SendMessageW(tb, TB_ADDBUTTONSW, 1, reinterpret_cast<LPARAM>(&btn));
@@ -378,15 +412,15 @@ static int GetBadgeCount(Impl* p, UINT cmd_id) {
     return 0;
 }
 
-static void DrawToolbarBadge(HDC hdc, const RECT& btn_rect, int count) {
+static void DrawToolbarBadge(HDC hdc, const RECT& btn_rect, int count, UINT dpi) {
     if (count <= 0) return;
 
     wchar_t text[8];
     swprintf_s(text, L"%d", count);
 
-    int radius = 12;
-    int cx = btn_rect.right - 18;
-    int cy = btn_rect.top + 16;
+    int radius = ScaleDpi(8, dpi);
+    int cx = btn_rect.right - ScaleDpi(12, dpi);
+    int cy = btn_rect.top + ScaleDpi(10, dpi);
 
     HBRUSH brush = CreateSolidBrush(RGB(120, 120, 120));
     HPEN pen = CreatePen(PS_SOLID, 1, RGB(120, 120, 120));
@@ -400,7 +434,7 @@ static void DrawToolbarBadge(HDC hdc, const RECT& btn_rect, int count) {
     DeleteObject(brush);
     DeleteObject(pen);
 
-    HFONT badge_font = CreateFontW(-16, 0, 0, 0, FW_BOLD,
+    HFONT badge_font = CreateFontW(-MulDiv(8, static_cast<int>(dpi), 72), 0, 0, 0, FW_BOLD,
         FALSE, FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
@@ -426,7 +460,7 @@ static LRESULT HandleToolbarCustomDraw(Impl* p, LPNMTBCUSTOMDRAW cd) {
         if (cmd == IDM_SHARED_FOLDERS || cmd == IDM_PORT_FORWARDS) {
             int count = GetBadgeCount(p, cmd);
             if (count > 0) {
-                DrawToolbarBadge(cd->nmcd.hdc, cd->nmcd.rc, count);
+                DrawToolbarBadge(cd->nmcd.hdc, cd->nmcd.rc, count, p->dpi);
             }
         }
         return CDRF_DODEFAULT;
@@ -451,6 +485,18 @@ static void ResizeWindowForDisplay(Impl* p, uint32_t vm_width, uint32_t vm_heigh
     p->last_sent_display_w = vm_width;
     p->last_sent_display_h = vm_height;
 
+    // When DPI-scaled, VM resolution is lower than panel size;
+    // expand panel size to match the upscaled framebuffer display.
+    int panel_w = static_cast<int>(vm_width);
+    int panel_h = static_cast<int>(vm_height);
+    bool scaled = (p->selected_index >= 0 &&
+        p->selected_index < static_cast<int>(p->records.size()) &&
+        p->records[p->selected_index].spec.dpi_scaled);
+    if (scaled && p->dpi != 96) {
+        panel_w = MulDiv(panel_w, static_cast<int>(p->dpi), 96);
+        panel_h = MulDiv(panel_h, static_cast<int>(p->dpi), 96);
+    }
+
     int tb_h = 0;
     if (IsWindowVisible(p->toolbar)) {
         RECT tbr;
@@ -466,8 +512,8 @@ static void ResizeWindowForDisplay(Impl* p, uint32_t vm_width, uint32_t vm_heigh
     int tab_extra_w = tab_padding.right - tab_padding.left - 100;
     int tab_extra_h = tab_padding.bottom - tab_padding.top - 100;
 
-    int target_cw = p->left_pane_width + Impl::kSplitterWidth + tab_extra_w + static_cast<int>(vm_width);
-    int target_ch = tb_h + tab_extra_h + static_cast<int>(vm_height) + sb_h;
+    int target_cw = p->left_pane_width + p->SplitterWidth() + tab_extra_w + panel_w;
+    int target_ch = tb_h + tab_extra_h + panel_h + sb_h;
 
     RECT wr = {0, 0, target_cw, target_ch};
     DWORD style = static_cast<DWORD>(GetWindowLongPtr(p->hwnd, GWL_STYLE));
@@ -527,7 +573,7 @@ static void LayoutControls(Impl* p) {
     MoveWindow(p->vm_listview.handle(), 0, content_top, p->left_pane_width, content_h, TRUE);
     p->vm_listview.UpdateColumnWidth();
 
-    int rx = p->left_pane_width + Impl::kSplitterWidth;
+    int rx = p->left_pane_width + p->SplitterWidth();
     int rw = cw - rx;
     if (rw < 0) rw = 0;
 
@@ -568,12 +614,19 @@ static void LayoutControls(Impl* p) {
             p->display_panel->SetVisible(true);
             p->display_panel->SetBounds(px, py, pw, ph);
 
-            bool adaptive = g_shell && g_shell->manager_.app_settings().adaptive_display;
+            bool scaled = (p->selected_index >= 0 &&
+                p->selected_index < static_cast<int>(p->records.size()) &&
+                p->records[p->selected_index].spec.dpi_scaled);
+            uint32_t disp_w, disp_h;
+            if (scaled && p->dpi != 96) {
+                disp_w = pw > 0 ? (static_cast<uint32_t>(MulDiv(pw, 96, p->dpi)) & ~7u) : 0;
+                disp_h = ph > 0 ? static_cast<uint32_t>(MulDiv(ph, 96, p->dpi)) : 0;
+            } else {
+                disp_w = pw > 0 ? (static_cast<uint32_t>(pw) & ~7u) : 0;
+                disp_h = ph > 0 ? static_cast<uint32_t>(ph) : 0;
+            }
 
-            uint32_t disp_w = pw > 0 ? (static_cast<uint32_t>(pw) & ~7u) : 0;
-            uint32_t disp_h = ph > 0 ? static_cast<uint32_t>(ph) : 0;
-
-            if (adaptive && p->display_available && disp_w > 0 && disp_h > 0 &&
+            if (p->display_available && disp_w > 0 && disp_h > 0 &&
                 (disp_w != p->last_sent_display_w || disp_h != p->last_sent_display_h)) {
                 p->pending_display_w = disp_w;
                 p->pending_display_h = disp_h;
@@ -614,6 +667,12 @@ static void UpdateCommandStates(Impl* p) {
     EnableCmd(IDM_SHARED_FOLDERS, has_sel);
     EnableCmd(IDM_PORT_FORWARDS, has_sel);
 
+    SendMessage(p->toolbar, TB_ENABLEBUTTON, IDM_DPI_ZOOM,
+                MAKELONG(has_sel ? TRUE : FALSE, 0));
+    bool dpi_scaled = has_sel && p->records[p->selected_index].spec.dpi_scaled;
+    SendMessage(p->toolbar, TB_CHECKBUTTON, IDM_DPI_ZOOM,
+                MAKELONG(dpi_scaled ? TRUE : FALSE, 0));
+
     InvalidateRect(p->toolbar, nullptr, FALSE);
 
     p->console_tab.SetEnabled(running);
@@ -623,7 +682,7 @@ static void UpdateCommandStates(Impl* p) {
 
 static bool HitTestSplitter(Impl* p, int client_x) {
     return client_x >= p->left_pane_width &&
-           client_x <  p->left_pane_width + Impl::kSplitterWidth;
+           client_x <  p->left_pane_width + p->SplitterWidth();
 }
 
 // ── WndProc ──
@@ -828,21 +887,24 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             LayoutControls(p);
             return 0;
         }
-        case IDM_VIEW_ADAPTIVE_DISPLAY: {
-            auto& adaptive = shell->manager_.app_settings().adaptive_display;
-            adaptive = !adaptive;
-            HMENU view_menu = GetSubMenu(p->menu_bar, 2);
-            if (view_menu) {
-                CheckMenuItem(view_menu, IDM_VIEW_ADAPTIVE_DISPLAY,
-                    MF_BYCOMMAND | (adaptive ? MF_CHECKED : MF_UNCHECKED));
-            }
-            if (p->display_panel) {
-                p->display_panel->SetScaling(!adaptive);
-            }
-            shell->manager_.SaveAppSettings();
-            if (adaptive) {
-                LayoutControls(p);
-            }
+        case IDM_DPI_ZOOM: {
+            if (p->selected_index < 0 ||
+                p->selected_index >= static_cast<int>(p->records.size()))
+                break;
+            auto& spec = p->records[p->selected_index].spec;
+            bool new_val = !spec.dpi_scaled;
+            shell->manager_.SetVmDpiScaled(spec.vm_id, new_val);
+            spec.dpi_scaled = new_val;
+
+            float factor = new_val ? (static_cast<float>(p->dpi) / 96.0f) : 1.0f;
+            if (p->display_panel) p->display_panel->SetDpiZoomFactor(factor);
+
+            SendMessage(p->toolbar, TB_CHECKBUTTON, IDM_DPI_ZOOM,
+                        MAKELONG(new_val ? TRUE : FALSE, 0));
+
+            p->last_sent_display_w = 0;
+            p->last_sent_display_h = 0;
+            LayoutControls(p);
             return 0;
         }
         case IDM_EDIT: {
@@ -944,6 +1006,10 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     p->last_sent_display_w = 0;
                     p->last_sent_display_h = 0;
 
+                    float factor = p->records[sel].spec.dpi_scaled
+                        ? (static_cast<float>(p->dpi) / 96.0f) : 1.0f;
+                    if (p->display_panel) p->display_panel->SetDpiZoomFactor(factor);
+
                     p->info_tab.Update(&p->records[sel].spec);
                     UpdateCommandStates(p);
 
@@ -995,8 +1061,8 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (p && p->splitter_dragging) {
             int dx = GET_X_LPARAM(lp) - p->splitter_drag_start_x;
             int new_w = p->splitter_drag_start_width + dx;
-            if (new_w < Impl::kMinLeftPaneWidth) new_w = Impl::kMinLeftPaneWidth;
-            if (new_w > Impl::kMaxLeftPaneWidth) new_w = Impl::kMaxLeftPaneWidth;
+            if (new_w < p->MinLeftPaneWidth()) new_w = p->MinLeftPaneWidth();
+            if (new_w > p->MaxLeftPaneWidth()) new_w = p->MaxLeftPaneWidth();
             if (new_w != p->left_pane_width) {
                 p->left_pane_width = new_w;
                 LayoutControls(p);
@@ -1108,6 +1174,53 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         PostQuitMessage(0);
         return 0;
 
+    case WM_DPICHANGED: {
+        if (!p) break;
+        UINT new_dpi = HIWORD(wp);
+        UINT old_dpi = p->dpi;
+        p->dpi = new_dpi;
+
+        p->left_pane_width = MulDiv(p->left_pane_width, static_cast<int>(new_dpi), static_cast<int>(old_dpi));
+
+        p->RecreateUiFont();
+        p->RecreateMonoFont();
+
+        SendMessage(p->toolbar, WM_SETFONT, reinterpret_cast<WPARAM>(p->ui_font), FALSE);
+        SendMessage(p->tab, WM_SETFONT, reinterpret_cast<WPARAM>(p->ui_font), FALSE);
+        SendMessage(p->vm_listview.handle(), WM_SETFONT, reinterpret_cast<WPARAM>(p->ui_font), FALSE);
+        p->vm_listview.UpdateRowHeight(p->dpi);
+        p->console_tab.UpdateFonts(p->mono_font, p->ui_font);
+
+        {
+            HINSTANCE hinst = GetModuleHandle(nullptr);
+            HWND old_tb = p->toolbar;
+            bool was_visible = IsWindowVisible(old_tb) != FALSE;
+            DestroyWindow(old_tb);
+            p->toolbar = CreateToolbar(hwnd, hinst, new_dpi);
+            SendMessage(p->toolbar, WM_SETFONT, reinterpret_cast<WPARAM>(p->ui_font), FALSE);
+            if (!was_visible) ShowWindow(p->toolbar, SW_HIDE);
+        }
+
+        const RECT* suggested = reinterpret_cast<const RECT*>(lp);
+        SetWindowPos(hwnd, nullptr,
+            suggested->left, suggested->top,
+            suggested->right - suggested->left,
+            suggested->bottom - suggested->top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+
+        if (p->selected_index >= 0 && p->selected_index < static_cast<int>(p->records.size())) {
+            p->vm_listview.Populate(p->records, p->selected_index);
+            if (p->display_panel && p->records[p->selected_index].spec.dpi_scaled) {
+                p->display_panel->SetDpiZoomFactor(static_cast<float>(new_dpi) / 96.0f);
+            }
+        }
+        p->last_sent_display_w = 0;
+        p->last_sent_display_h = 0;
+        UpdateCommandStates(p);
+        LayoutControls(p);
+        return 0;
+    }
+
     case WM_ACTIVATEAPP:
         if (!wp && p && p->display_panel) {
             p->display_panel->ReleaseAllModifiers();
@@ -1139,24 +1252,25 @@ Win32UiShell::Win32UiShell(ManagerService& manager)
     HINSTANCE hinst = GetModuleHandle(nullptr);
     RegisterMainClass(hinst);
 
+    // Get initial DPI from primary monitor
+    HDC screen_dc = GetDC(nullptr);
+    impl_->dpi = static_cast<UINT>(GetDeviceCaps(screen_dc, LOGPIXELSX));
+    ReleaseDC(nullptr, screen_dc);
+    if (impl_->dpi == 0) impl_->dpi = 96;
+
     // Fonts
-    NONCLIENTMETRICSW ncm{sizeof(ncm)};
-    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
-    impl_->ui_font = CreateFontIndirectW(&ncm.lfMessageFont);
-    ncm.lfMessageFont.lfHeight = -13;
-    lstrcpyW(ncm.lfMessageFont.lfFaceName, L"Consolas");
-    impl_->mono_font = CreateFontIndirectW(&ncm.lfMessageFont);
+    impl_->RecreateUiFont();
+    impl_->RecreateMonoFont();
 
     // Restore geometry
     const auto& geo = manager_.app_settings().window;
     int x = (geo.x >= 0) ? geo.x : CW_USEDEFAULT;
     int y = (geo.y >= 0) ? geo.y : CW_USEDEFAULT;
-    int w = (geo.width > 0) ? geo.width : 1024;
-    int h = (geo.height > 0) ? geo.height : 680;
+    int w = (geo.width > 0) ? geo.width : impl_->Dpi(1024);
+    int h = (geo.height > 0) ? geo.height : impl_->Dpi(680);
 
     i18n::InitLanguage();
-    impl_->menu_bar = BuildMenuBar(manager_.app_settings().show_toolbar,
-                                    manager_.app_settings().adaptive_display);
+    impl_->menu_bar = BuildMenuBar(manager_.app_settings().show_toolbar);
 
     impl_->hwnd = CreateWindowExW(0, kWndClass, i18n::tr_w(i18n::S::kAppTitle).c_str(),
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
@@ -1167,9 +1281,18 @@ Win32UiShell::Win32UiShell(ManagerService& manager)
     SetWindowLongPtrW(impl_->hwnd, GWLP_USERDATA,
         reinterpret_cast<LONG_PTR>(impl_.get()));
 
+    // Refresh DPI from the actual window (may differ from screen DC if on a secondary monitor)
+    UINT actual_dpi = GetWindowDpi(impl_->hwnd);
+    if (actual_dpi != impl_->dpi) {
+        impl_->dpi = actual_dpi;
+        impl_->RecreateUiFont();
+        impl_->RecreateMonoFont();
+    }
+    impl_->left_pane_width = impl_->Dpi(kDefaultLeftPaneWidth96);
+
     AddClipboardFormatListener(impl_->hwnd);
 
-    impl_->toolbar = CreateToolbar(impl_->hwnd, hinst);
+    impl_->toolbar = CreateToolbar(impl_->hwnd, hinst, impl_->dpi);
     if (!manager_.app_settings().show_toolbar) {
         ShowWindow(impl_->toolbar, SW_HIDE);
     }
@@ -1179,7 +1302,7 @@ Win32UiShell::Win32UiShell(ManagerService& manager)
         reinterpret_cast<HMENU>(IDC_STATUSBAR), hinst, nullptr);
 
     // Components
-    impl_->vm_listview.Create(impl_->hwnd, hinst, impl_->ui_font);
+    impl_->vm_listview.Create(impl_->hwnd, hinst, impl_->ui_font, impl_->dpi);
     impl_->vm_listview.SetDragDropCallback([this](int from, int to) {
         if (from == to) return;
         auto item = std::move(impl_->records[from]);
@@ -1201,7 +1324,7 @@ Win32UiShell::Win32UiShell(ManagerService& manager)
         reinterpret_cast<HMENU>(IDC_TAB), hinst, nullptr);
     SendMessage(impl_->tab, WM_SETFONT,
         reinterpret_cast<WPARAM>(impl_->ui_font), FALSE);
-    SendMessage(impl_->tab, TCM_SETPADDING, 0, MAKELPARAM(24, 8));
+    SendMessage(impl_->tab, TCM_SETPADDING, 0, MAKELPARAM(impl_->Dpi(24), impl_->Dpi(8)));
     {
         std::wstring wtab_info = i18n::tr_w(i18n::S::kTabInfo);
         std::wstring wtab_console = i18n::tr_w(i18n::S::kTabConsole);
@@ -1226,7 +1349,6 @@ Win32UiShell::Win32UiShell(ManagerService& manager)
     // Display panel
     impl_->display_panel = std::make_unique<DisplayPanel>();
     impl_->display_panel->Create(impl_->hwnd, hinst, 0, 0, 400, 300);
-    impl_->display_panel->SetScaling(!manager_.app_settings().adaptive_display);
     impl_->display_panel->SetKeyCallback(
         [this](uint32_t evdev_code, bool pressed) {
             if (impl_->selected_index < 0 ||
@@ -1302,6 +1424,9 @@ Win32UiShell::Win32UiShell(ManagerService& manager)
 
                 if (active) {
                     impl_->display_available = true;
+                    float factor = impl_->records[impl_->selected_index].spec.dpi_scaled
+                        ? (static_cast<float>(impl_->dpi) / 96.0f) : 1.0f;
+                    if (impl_->display_panel) impl_->display_panel->SetDpiZoomFactor(factor);
                     SendMessage(impl_->tab, TCM_SETCURSEL, kTabDisplay, 0);
                     ResizeWindowForDisplay(impl_.get(), width, height);
                 } else {

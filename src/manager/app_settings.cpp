@@ -112,9 +112,6 @@ AppSettings LoadSettings(const std::string& data_dir) {
         if (j.contains("show_toolbar") && j["show_toolbar"].is_boolean()) {
             s.show_toolbar = j["show_toolbar"].get<bool>();
         }
-        if (j.contains("adaptive_display") && j["adaptive_display"].is_boolean()) {
-            s.adaptive_display = j["adaptive_display"].get<bool>();
-        }
         if (j.contains("vm_storage_dir") && j["vm_storage_dir"].is_string()) {
             auto v = j["vm_storage_dir"].get<std::string>();
             if (!v.empty()) s.vm_storage_dir = v;
@@ -179,7 +176,6 @@ void SaveSettings(const std::string& data_dir, const AppSettings& s) {
     json j;
     j["window"]           = w;
     j["show_toolbar"]     = s.show_toolbar;
-    j["adaptive_display"] = s.adaptive_display;
     j["vm_paths"]         = vm_paths_json;
     if (!s.vm_storage_dir.empty())
         j["vm_storage_dir"] = s.vm_storage_dir;
@@ -221,6 +217,7 @@ bool LoadVmManifest(const std::string& vm_dir, VmSpec& spec) {
         if (j.contains("cpu_count")) spec.cpu_count = j["cpu_count"].get<uint32_t>();
         if (j.contains("nat_enabled")) spec.nat_enabled = j["nat_enabled"].get<bool>();
         if (j.contains("debug_mode")) spec.debug_mode = j["debug_mode"].get<bool>();
+        if (j.contains("dpi_scaled")) spec.dpi_scaled = j["dpi_scaled"].get<bool>();
 
         // Resolve relative paths to absolute
         auto Resolve = [&](const char* key) -> std::string {
@@ -292,8 +289,9 @@ void SaveVmManifest(const VmSpec& spec) {
     j["cmdline"]     = spec.cmdline;
     j["memory_mb"]   = spec.memory_mb;
     j["cpu_count"]   = spec.cpu_count;
-    j["nat_enabled"] = spec.nat_enabled;
-    j["debug_mode"]  = spec.debug_mode;
+    j["nat_enabled"]   = spec.nat_enabled;
+    j["debug_mode"]    = spec.debug_mode;
+    j["dpi_scaled"]    = spec.dpi_scaled;
     if (spec.creation_time > 0) j["creation_time"] = spec.creation_time;
     if (spec.last_boot_time > 0) j["last_boot_time"] = spec.last_boot_time;
 

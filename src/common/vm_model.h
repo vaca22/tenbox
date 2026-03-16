@@ -115,6 +115,7 @@ struct VmSpec {
     uint32_t cpu_count = 4;
     bool nat_enabled = true;
     bool debug_mode = false;
+    bool dpi_scaled = false;  // true = apply DPI scaling (lower VM res, larger text), false = 1:1 physical pixels
     std::vector<PortForward> port_forwards;
     std::vector<SharedFolder> shared_folders;
     int64_t creation_time = 0;   // Unix timestamp (seconds since epoch), 0 = not set

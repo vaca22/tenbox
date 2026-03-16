@@ -50,9 +50,9 @@ public:
     // Restore cursor from cached state (e.g. when switching back to a VM).
     void RestoreCursor(const CursorInfo& cursor, const std::vector<uint8_t>& pixels);
 
-    // Enable or disable scaling mode (fit framebuffer to panel, preserving aspect ratio).
-    // When disabled (default), the framebuffer is rendered 1:1 centered.
-    void SetScaling(bool enabled);
+    // Set DPI zoom factor for rendering. 1.0 = 1:1 physical pixels (default),
+    // > 1.0 = enlarge framebuffer to simulate DPI scaling (e.g. 2.0 at 200% DPI).
+    void SetDpiZoomFactor(float factor);
 
     // Move/resize the window.
     void SetBounds(int x, int y, int w, int h);
@@ -104,7 +104,7 @@ private:
     std::mutex cursor_mutex_;
     HCURSOR custom_cursor_ = nullptr;
 
-    bool scaling_ = false;
+    float dpi_zoom_factor_ = 1.0f;
 
     KeyEventCallback key_cb_;
     PointerEventCallback pointer_cb_;

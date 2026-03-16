@@ -948,6 +948,14 @@ bool ManagerService::SetDisplaySize(const std::string& vm_id, uint32_t width, ui
     return SendRuntimeMessage(*vm, msg);
 }
 
+void ManagerService::SetVmDpiScaled(const std::string& vm_id, bool scaled) {
+    std::lock_guard<std::mutex> lock(vms_mutex_);
+    VmRecord* vm = FindVm(vm_id);
+    if (!vm) return;
+    vm->spec.dpi_scaled = scaled;
+    settings::SaveVmManifest(vm->spec);
+}
+
 bool ManagerService::SendClipboardGrab(const std::string& vm_id,
                                        const std::vector<uint32_t>& types) {
     std::lock_guard<std::mutex> lock(vms_mutex_);

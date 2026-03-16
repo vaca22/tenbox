@@ -22,7 +22,6 @@ struct AppSettings {
     WindowGeometry window;
     std::vector<std::string> vm_paths;
     bool show_toolbar = true;
-    bool adaptive_display = true;
     std::string vm_storage_dir;     // empty = DefaultVmStorageDir()
     std::string image_cache_dir;    // empty = DefaultImageCacheDir(data_dir)
     std::vector<image_source::ImageSource> sources; // empty = use DefaultSources()

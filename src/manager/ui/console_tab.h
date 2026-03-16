@@ -22,6 +22,7 @@ public:
     void Show(bool visible);
     void Layout(int px, int py, int pw, int ph);
     void SetEnabled(bool enabled);
+    void UpdateFonts(HFONT mono_font, HFONT ui_font);
 
     HWND input_handle() const { return console_in_; }
 

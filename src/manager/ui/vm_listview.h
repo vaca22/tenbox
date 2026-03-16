@@ -14,15 +14,18 @@ struct VmRecord;
 class VmListView {
 public:
     static constexpr UINT kControlId = 2003;
-    static constexpr int kItemHeight = 80;
+    static constexpr int kItemHeight96 = 54;
 
     using DragDropCallback = std::function<void(int, int)>;
 
     VmListView() = default;
     ~VmListView() = default;
 
-    void Create(HWND parent, HINSTANCE hinst, HFONT ui_font);
+    void Create(HWND parent, HINSTANCE hinst, HFONT ui_font, UINT dpi);
     HWND handle() const { return hwnd_; }
+
+    int ItemHeight() const { return item_height_; }
+    void UpdateRowHeight(UINT dpi);
 
     // Resize the single column to fill the client area (call after MoveWindow).
     void UpdateColumnWidth();
@@ -47,6 +50,7 @@ private:
     int drag_index_ = -1;
     int drop_marker_ = -1;
     bool dragging_ = false;
+    int item_height_ = kItemHeight96;
     DragDropCallback drag_drop_cb_;
 
     void DrawItem(HDC hdc, const RECT& rc, const VmRecord& rec,

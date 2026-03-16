@@ -184,6 +184,7 @@ public:
     bool SendPointerEvent(const std::string& vm_id, int32_t x, int32_t y, uint32_t buttons);
     bool SendWheelEvent(const std::string& vm_id, int32_t delta);
     bool SetDisplaySize(const std::string& vm_id, uint32_t width, uint32_t height);
+    void SetVmDpiScaled(const std::string& vm_id, bool scaled);
 
     // Clipboard operations: host to VM
     bool SendClipboardGrab(const std::string& vm_id, const std::vector<uint32_t>& types);

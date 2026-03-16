@@ -150,7 +150,6 @@ enum class S {
     // View menu
     kMenuView,
     kMenuViewToolbar,
-    kMenuViewAdaptiveDisplay,
 
     // Help menu
     kMenuHelp,
@@ -202,6 +201,7 @@ enum class S {
     kPfInvalidPort,
     kPfDuplicatePort,
     kToolbarPortForwards,
+    kToolbarDpiZoom,
     kMenuPortForwards,
     kMenuClone,
     kStatusVmCloned,

@@ -17,7 +17,11 @@ static const char* StateText(VmPowerState s) {
 
 // ── Create ──
 
-void VmListView::Create(HWND parent, HINSTANCE hinst, HFONT ui_font) {
+static int ScaleDpi(int px, UINT dpi) { return MulDiv(px, static_cast<int>(dpi), 96); }
+
+void VmListView::Create(HWND parent, HINSTANCE hinst, HFONT ui_font, UINT dpi) {
+    item_height_ = ScaleDpi(kItemHeight96, dpi);
+
     hwnd_ = CreateWindowExW(
         WS_EX_CLIENTEDGE, WC_LISTVIEWW, nullptr,
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
@@ -36,8 +40,8 @@ void VmListView::Create(HWND parent, HINSTANCE hinst, HFONT ui_font) {
         ListView_SetToolTips(hwnd_, nullptr);
     }
 
-    // Force row height to kItemHeight via a small-state ImageList trick.
-    HIMAGELIST hil = ImageList_Create(1, kItemHeight, ILC_COLOR32, 1, 0);
+    // Force row height via a small-state ImageList trick.
+    HIMAGELIST hil = ImageList_Create(1, item_height_, ILC_COLOR32, 1, 0);
     ListView_SetImageList(hwnd_, hil, LVSIL_SMALL);
 
     LVCOLUMNW col{};
@@ -47,6 +51,14 @@ void VmListView::Create(HWND parent, HINSTANCE hinst, HFONT ui_font) {
 
     SendMessage(hwnd_, WM_SETFONT,
         reinterpret_cast<WPARAM>(ui_font), FALSE);
+}
+
+void VmListView::UpdateRowHeight(UINT dpi) {
+    item_height_ = ScaleDpi(kItemHeight96, dpi);
+    HIMAGELIST old_il = ListView_GetImageList(hwnd_, LVSIL_SMALL);
+    HIMAGELIST hil = ImageList_Create(1, item_height_, ILC_COLOR32, 1, 0);
+    ListView_SetImageList(hwnd_, hil, LVSIL_SMALL);
+    if (old_il) ImageList_Destroy(old_il);
 }
 
 // ── UpdateColumnWidth ──
@@ -182,7 +194,7 @@ bool VmListView::HandleNotify(NMHDR* nmhdr, const std::vector<VmRecord>& records
             if (idx >= 0 && idx < static_cast<int>(records.size())) {
                 bool sel = (ListView_GetItemState(hwnd_, idx, LVIS_SELECTED) & LVIS_SELECTED) != 0;
                 RECT rc = cd->nmcd.rc;
-                rc.bottom = rc.top + kItemHeight;
+                rc.bottom = rc.top + item_height_;
                 DrawItem(cd->nmcd.hdc, rc, records[idx], sel, ui_font);
             }
             *result = CDRF_SKIPDEFAULT;
@@ -208,7 +220,7 @@ bool VmListView::HandleNotify(NMHDR* nmhdr, const std::vector<VmRecord>& records
         RECT client_rc{};
         GetClientRect(hwnd_, &client_rc);
         int w = client_rc.right - client_rc.left;
-        int h = kItemHeight;
+        int h = item_height_;
         if (w <= 0) w = 252;
 
         RECT item_rc{};
@@ -262,7 +274,7 @@ void VmListView::DrawDropMarker(int target_index) {
 
     RECT rc{};
     if (ListView_GetItemRect(hwnd_, drop_marker_, &rc, LVIR_BOUNDS)) {
-        int y = (drop_marker_ > drag_index_) ? rc.top + kItemHeight - 1 : rc.top;
+        int y = (drop_marker_ > drag_index_) ? rc.top + item_height_ - 1 : rc.top;
 
         ImageList_DragShowNolock(FALSE);
         HDC hdc = GetDC(hwnd_);
@@ -284,7 +296,7 @@ void VmListView::ClearDropMarker() {
 
     RECT rc{};
     if (ListView_GetItemRect(hwnd_, drop_marker_, &rc, LVIR_BOUNDS)) {
-        int y = (drop_marker_ > drag_index_) ? rc.top + kItemHeight - 1 : rc.top;
+        int y = (drop_marker_ > drag_index_) ? rc.top + item_height_ - 1 : rc.top;
         RECT inv = { rc.left, y - 2, rc.right, y + 2 };
 
         ImageList_DragShowNolock(FALSE);

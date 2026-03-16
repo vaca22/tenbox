@@ -42,9 +42,12 @@ void ConsoleTab::Show(bool visible) {
 }
 
 void ConsoleTab::Layout(int px, int py, int pw, int ph) {
-    int input_h = 24;
-    int send_w = 60;
-    int gap = 4;
+    UINT dpi = GetDpiForWindow(console_);
+    if (dpi == 0) dpi = 96;
+    auto scale = [dpi](int px96) { return MulDiv(px96, static_cast<int>(dpi), 96); };
+    int input_h = scale(24);
+    int send_w = scale(60);
+    int gap = scale(4);
     int console_h = ph - input_h - gap;
     if (console_h < 20) console_h = 20;
 
@@ -57,6 +60,12 @@ void ConsoleTab::Layout(int px, int py, int pw, int ph) {
 void ConsoleTab::SetEnabled(bool enabled) {
     EnableWindow(console_in_, enabled);
     EnableWindow(send_btn_, enabled);
+}
+
+void ConsoleTab::UpdateFonts(HFONT mono_font, HFONT ui_font) {
+    SendMessage(console_, WM_SETFONT, reinterpret_cast<WPARAM>(mono_font), TRUE);
+    SendMessage(console_in_, WM_SETFONT, reinterpret_cast<WPARAM>(mono_font), TRUE);
+    SendMessage(send_btn_, WM_SETFONT, reinterpret_cast<WPARAM>(ui_font), TRUE);
 }
 
 void ConsoleTab::SetText(const char* text) {

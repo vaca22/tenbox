@@ -261,8 +261,8 @@ void DisplayPanel::RestoreCursor(const CursorInfo& cursor, const std::vector<uin
     }
 }
 
-void DisplayPanel::SetScaling(bool enabled) {
-    scaling_ = enabled;
+void DisplayPanel::SetDpiZoomFactor(float factor) {
+    dpi_zoom_factor_ = factor;
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -280,16 +280,8 @@ void DisplayPanel::CalcDisplayRect(int cw, int ch, RECT* out) const {
         return;
     }
 
-    int dw, dh;
-    if (scaling_) {
-        float scale = (std::min)(static_cast<float>(cw) / fb_width_,
-                                 static_cast<float>(ch) / fb_height_);
-        dw = static_cast<int>(fb_width_ * scale);
-        dh = static_cast<int>(fb_height_ * scale);
-    } else {
-        dw = static_cast<int>(fb_width_);
-        dh = static_cast<int>(fb_height_);
-    }
+    int dw = static_cast<int>(fb_width_ * dpi_zoom_factor_);
+    int dh = static_cast<int>(fb_height_ * dpi_zoom_factor_);
 
     int dx = (cw - dw) / 2;
     int dy = (ch - dh) / 2;
@@ -338,21 +330,23 @@ void DisplayPanel::OnPaint() {
             FillRect(hdc, &bar, black);
         }
 
-        if (scaling_) {
-            int prev_mode = SetStretchBltMode(hdc, HALFTONE);
-            SetBrushOrgEx(hdc, 0, 0, nullptr);
-            StretchDIBits(hdc,
-                dst.left, dst.top, dst.right - dst.left, dst.bottom - dst.top,
-                0, 0, fb_width_, fb_height_,
-                framebuffer_.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
-            SetStretchBltMode(hdc, prev_mode);
-        } else {
+        int dst_w = dst.right - dst.left;
+        int dst_h = dst.bottom - dst.top;
+        if (dst_w == static_cast<int>(fb_width_) && dst_h == static_cast<int>(fb_height_)) {
             SetDIBitsToDevice(hdc,
                 dst.left, dst.top,
                 fb_width_, fb_height_,
                 0, 0,
                 0, fb_height_,
                 framebuffer_.data(), &bmi, DIB_RGB_COLORS);
+        } else {
+            int prev_mode = SetStretchBltMode(hdc, HALFTONE);
+            SetBrushOrgEx(hdc, 0, 0, nullptr);
+            StretchDIBits(hdc,
+                dst.left, dst.top, dst_w, dst_h,
+                0, 0, fb_width_, fb_height_,
+                framebuffer_.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+            SetStretchBltMode(hdc, prev_mode);
         }
     } else {
         HBRUSH black = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
