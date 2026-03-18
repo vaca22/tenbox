@@ -5,6 +5,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <commctrl.h>
+#include <shellapi.h>
+#include <shlobj.h>
 
 #include <array>
 #include <cstdio>
@@ -127,6 +129,9 @@ enum LlmDlgId {
     IDC_LLM_EDIT      = 503,
     IDC_LLM_REMOVE    = 504,
     IDC_LLM_HINT      = 505,
+    IDC_LLM_LOG_CHECK = 506,
+    IDC_LLM_LOG_LABEL = 507,
+    IDC_LLM_LOG_LINK  = 508,
 };
 
 enum LlmEditDlgId {
@@ -271,6 +276,7 @@ struct LlmDlgData {
     settings::LlmProxySettings settings;
     LlmProxySettingsCallback on_change;
     HWND listview;
+    std::wstring log_dir;
 };
 
 static void LlmRefreshList(LlmDlgData* data) {
@@ -340,10 +346,10 @@ static INT_PTR CALLBACK LlmDlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         int gap = btn_h / 2, btn_gap = btn_h / 4;
         int list_w = rc.right - btn_w - gap * 3;
 
-        RECT hdu = {0, 0, 4, 24};
+        RECT hdu = {0, 0, 4, 48};
         MapDialogRect(dlg, &hdu);
-        int hint_h = hdu.bottom;
-        int list_h = rc.bottom - gap * 3 - hint_h;
+        int bottom_area_h = hdu.bottom;
+        int list_h = rc.bottom - gap * 3 - bottom_area_h;
 
         HWND lv = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
             WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
@@ -372,10 +378,61 @@ static INT_PTR CALLBACK LlmDlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         MoveWindow(GetDlgItem(dlg, IDC_LLM_EDIT), btn_x, gap + btn_h + btn_gap, btn_w, btn_h, FALSE);
         MoveWindow(GetDlgItem(dlg, IDC_LLM_REMOVE), btn_x, gap + (btn_h + btn_gap) * 2, btn_w, btn_h, FALSE);
 
+        int bottom_y = gap + list_h + gap;
+
+        HWND chk = CreateWindowExW(0, L"BUTTON",
+            i18n::tr_w(i18n::S::kLlmEnableLogging).c_str(),
+            WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP,
+            gap, bottom_y, 180, btn_h,
+            dlg, reinterpret_cast<HMENU>(static_cast<uintptr_t>(IDC_LLM_LOG_CHECK)),
+            GetModuleHandle(nullptr), nullptr);
+        SendMessageW(chk, WM_SETFONT,
+            SendMessageW(dlg, WM_GETFONT, 0, 0), TRUE);
+        if (data->settings.enable_logging)
+            SendMessageW(chk, BM_SETCHECK, BST_CHECKED, 0);
+
+        bottom_y += btn_h + 2;
+
+        wchar_t appdata[MAX_PATH]{};
+        SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, appdata);
+        data->log_dir = std::wstring(appdata) + L"\\TenBox\\llm_logs";
+
+        std::wstring label_text = i18n::tr_w(i18n::S::kLlmLoggingHint);
+        HWND log_label = CreateWindowExW(0, L"STATIC", label_text.c_str(),
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            gap, bottom_y, 0, btn_h,
+            dlg, reinterpret_cast<HMENU>(static_cast<uintptr_t>(IDC_LLM_LOG_LABEL)),
+            GetModuleHandle(nullptr), nullptr);
+        SendMessageW(log_label, WM_SETFONT,
+            SendMessageW(dlg, WM_GETFONT, 0, 0), TRUE);
+
+        HDC hdc = GetDC(log_label);
+        HFONT dlg_font = reinterpret_cast<HFONT>(SendMessageW(dlg, WM_GETFONT, 0, 0));
+        HFONT old_font = static_cast<HFONT>(SelectObject(hdc, dlg_font));
+        SIZE text_sz{};
+        GetTextExtentPoint32W(hdc, label_text.c_str(),
+            static_cast<int>(label_text.size()), &text_sz);
+        SelectObject(hdc, old_font);
+        ReleaseDC(log_label, hdc);
+        SetWindowPos(log_label, nullptr, 0, 0, text_sz.cx, btn_h,
+            SWP_NOMOVE | SWP_NOZORDER);
+
+        std::wstring link_text = L"<a>" + data->log_dir + L"</a>";
+        HWND log_link = CreateWindowExW(0, WC_LINK, link_text.c_str(),
+            WS_CHILD | WS_VISIBLE,
+            gap + text_sz.cx, bottom_y,
+            rc.right - gap * 2 - text_sz.cx, btn_h,
+            dlg, reinterpret_cast<HMENU>(static_cast<uintptr_t>(IDC_LLM_LOG_LINK)),
+            GetModuleHandle(nullptr), nullptr);
+        SendMessageW(log_link, WM_SETFONT,
+            SendMessageW(dlg, WM_GETFONT, 0, 0), TRUE);
+
+        bottom_y += btn_h + 2;
+
         std::wstring hint = i18n::tr_w(i18n::S::kLlmHint);
         HWND hint_ctrl = CreateWindowExW(0, L"STATIC", hint.c_str(),
             WS_CHILD | WS_VISIBLE | SS_LEFT,
-            gap, gap + list_h + gap, rc.right - gap * 2, hint_h,
+            gap, bottom_y, rc.right - gap * 2, bottom_area_h - (btn_h * 2 + 6),
             dlg, reinterpret_cast<HMENU>(IDC_LLM_HINT),
             GetModuleHandle(nullptr), nullptr);
         SendMessageW(hint_ctrl, WM_SETFONT,
@@ -388,6 +445,22 @@ static INT_PTR CALLBACK LlmDlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_NOTIFY: {
         auto* nmhdr = reinterpret_cast<NMHDR*>(lp);
+        if (nmhdr->idFrom == IDC_LLM_LOG_LINK && nmhdr->code == NM_CLICK) {
+            if (OpenClipboard(dlg)) {
+                EmptyClipboard();
+                size_t cb = (data->log_dir.size() + 1) * sizeof(wchar_t);
+                HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, cb);
+                if (hg) {
+                    memcpy(GlobalLock(hg), data->log_dir.c_str(), cb);
+                    GlobalUnlock(hg);
+                    SetClipboardData(CF_UNICODETEXT, hg);
+                }
+                CloseClipboard();
+            }
+            ShellExecuteW(dlg, L"open", data->log_dir.c_str(),
+                nullptr, nullptr, SW_SHOWNORMAL);
+            return TRUE;
+        }
         if (nmhdr->idFrom == IDC_LLM_LIST && nmhdr->code == LVN_ITEMCHANGED) {
             LlmUpdateButtons(dlg, data->listview);
         }
@@ -454,6 +527,13 @@ static INT_PTR CALLBACK LlmDlgProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                 LlmUpdateButtons(dlg, data->listview);
                 LlmNotifyChange(data);
             }
+            return TRUE;
+        }
+
+        case IDC_LLM_LOG_CHECK: {
+            LRESULT checked = SendDlgItemMessageW(dlg, IDC_LLM_LOG_CHECK, BM_GETCHECK, 0, 0);
+            data->settings.enable_logging = (checked == BST_CHECKED);
+            LlmNotifyChange(data);
             return TRUE;
         }
         }

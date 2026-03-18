@@ -150,6 +150,8 @@ AppSettings LoadSettings(const std::string& data_dir) {
                         s.llm_proxy.mappings.push_back(std::move(m));
                 }
             }
+            if (lp.contains("enable_logging") && lp["enable_logging"].is_boolean())
+                s.llm_proxy.enable_logging = lp["enable_logging"].get<bool>();
         }
         if (j.contains("vm_paths") && j["vm_paths"].is_array()) {
             auto default_storage = DefaultVmStorageDir();
@@ -221,6 +223,7 @@ void SaveSettings(const std::string& data_dir, const AppSettings& s) {
             });
         }
         lp["mappings"] = mappings;
+        lp["enable_logging"] = s.llm_proxy.enable_logging;
         j["llm_proxy"] = lp;
     }
 

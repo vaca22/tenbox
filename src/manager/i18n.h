@@ -309,6 +309,8 @@ enum class S {
     kLlmConfirmRemoveMsg,
     kLlmDuplicateAlias,
     kLlmHint,
+    kLlmEnableLogging,
+    kLlmLoggingHint,
 
     kCount  // Must be last
 };

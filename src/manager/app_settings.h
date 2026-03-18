@@ -36,6 +36,7 @@ struct LlmModelMapping {
 
 struct LlmProxySettings {
     std::vector<LlmModelMapping> mappings;
+    bool enable_logging = false;
 };
 
 struct AppSettings {

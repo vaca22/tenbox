@@ -7,6 +7,7 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shlobj.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <winhttp.h>
@@ -18,7 +19,10 @@
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <cstring>
+#include <ctime>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -114,6 +118,7 @@ LlmProxyService::LlmProxyService(const settings::LlmProxySettings& initial_setti
 
 LlmProxyService::~LlmProxyService() {
     Stop();
+    CloseLogFile();
 }
 
 bool LlmProxyService::Start() {
@@ -155,6 +160,13 @@ bool LlmProxyService::Start() {
     server_thread_ = std::thread(&LlmProxyService::ServerThread, this);
 
     LOG_INFO("LLM proxy started on 127.0.0.1:%u", port_.load());
+
+    {
+        std::lock_guard<std::mutex> lock(settings_mutex_);
+        if (settings_.enable_logging)
+            OpenLogFile();
+    }
+
     return true;
 }
 
@@ -176,7 +188,16 @@ void LlmProxyService::Stop() {
 
 void LlmProxyService::UpdateSettings(const settings::LlmProxySettings& settings) {
     std::lock_guard<std::mutex> lock(settings_mutex_);
+    bool was_logging = settings_.enable_logging;
     settings_ = settings;
+
+    if (settings.enable_logging && !was_logging) {
+        OpenLogFile();
+        LOG_INFO("LLM request logging enabled -> %s", log_dir_.c_str());
+    } else if (!settings.enable_logging && was_logging) {
+        LOG_INFO("LLM request logging disabled");
+        CloseLogFile();
+    }
 }
 
 void LlmProxyService::ServerThread() {
@@ -323,15 +344,20 @@ void LlmProxyService::HandleChatCompletions(uintptr_t sock, const std::string& b
         return;
     }
 
+    std::string alias = mapping->alias;
+    std::string target_model = mapping->model;
     bool is_streaming = req.value("stream", false);
 
-    // Replace model name
-    req["model"] = mapping->model;
+    req["model"] = target_model;
     std::string modified_body = req.dump();
 
-    if (!ForwardToUpstream(sock, *mapping, modified_body, is_streaming, keep_alive)) {
-        // Error response already sent by ForwardToUpstream on failure
-    }
+    int upstream_status = 0;
+    std::string upstream_response;
+    ForwardToUpstream(sock, *mapping, modified_body, is_streaming, keep_alive,
+                      upstream_status, upstream_response);
+
+    WriteLogEntry(body, upstream_response, alias, target_model,
+                  is_streaming, upstream_status);
 }
 
 void LlmProxyService::HandleModels(uintptr_t sock, bool keep_alive) {
@@ -391,7 +417,8 @@ const settings::LlmModelMapping* LlmProxyService::FindMapping(const std::string&
 bool LlmProxyService::ForwardToUpstream(uintptr_t client_sock,
                                           const settings::LlmModelMapping& mapping,
                                           const std::string& modified_body,
-                                          bool is_streaming, bool keep_alive) {
+                                          bool is_streaming, bool keep_alive,
+                                          int& out_status, std::string& out_response_body) {
     SOCKET client = static_cast<SOCKET>(client_sock);
 
     // Build upstream URL: target_url + /chat/completions
@@ -476,6 +503,7 @@ bool LlmProxyService::ForwardToUpstream(uintptr_t client_sock,
     WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                         WINHTTP_HEADER_NAME_BY_INDEX, &status_code, &sz,
                         WINHTTP_NO_HEADER_INDEX);
+    out_status = static_cast<int>(status_code);
 
     // Get content-type
     wchar_t ct_buf[256]{};
@@ -504,18 +532,19 @@ bool LlmProxyService::ForwardToUpstream(uintptr_t client_sock,
 
         // Read SSE data from WinHTTP and forward as chunked encoding
         {
+            std::string sse_raw;
             char buf[kReadBufSize];
             DWORD bytes_read = 0;
             while (WinHttpReadData(req, buf, sizeof(buf), &bytes_read) && bytes_read > 0) {
-                // Send chunk: size\r\n data\r\n
+                sse_raw.append(buf, bytes_read);
                 std::string chunk_header = ToHex(bytes_read) + "\r\n";
                 if (!SendStr(client, chunk_header)) break;
                 if (!SendAll(client, buf, static_cast<int>(bytes_read))) break;
                 if (!SendStr(client, "\r\n")) break;
                 bytes_read = 0;
             }
-            // Terminal chunk
             SendStr(client, "0\r\n\r\n");
+            out_response_body = std::move(sse_raw);
         }
     } else {
         // Non-streaming: read full body and send
@@ -527,7 +556,8 @@ bool LlmProxyService::ForwardToUpstream(uintptr_t client_sock,
             bytes_read = 0;
         }
 
-        // Build response
+        out_response_body.assign(response_body.begin(), response_body.end());
+
         std::string resp =
             "HTTP/1.1 " + std::to_string(status_code) + " OK\r\n"
             "Content-Type: application/json\r\n"
@@ -544,6 +574,170 @@ cleanup:
     WinHttpCloseHandle(conn);
     WinHttpCloseHandle(session);
     return true;
+}
+
+// ── Log file helpers ─────────────────────────────────────────────────
+
+namespace fs = std::filesystem;
+
+static std::string TodayDateStr() {
+    auto now = std::chrono::system_clock::now();
+    auto tt = std::chrono::system_clock::to_time_t(now);
+    struct tm tm_buf;
+    localtime_s(&tm_buf, &tt);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
+             tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday);
+    return buf;
+}
+
+static std::string IsoTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto tt = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  now.time_since_epoch()) % 1000;
+    struct tm tm_buf;
+    localtime_s(&tm_buf, &tt);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d.%03d",
+             tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
+             tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec,
+             static_cast<int>(ms.count()));
+    return buf;
+}
+
+// Extract assistant content from SSE stream (concatenate all delta content pieces).
+static std::string ExtractSseContent(const std::string& sse_raw) {
+    std::string content;
+    size_t pos = 0;
+    while (pos < sse_raw.size()) {
+        auto line_end = sse_raw.find('\n', pos);
+        if (line_end == std::string::npos) line_end = sse_raw.size();
+        std::string line = sse_raw.substr(pos, line_end - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        pos = line_end + 1;
+
+        if (line.rfind("data: ", 0) != 0) continue;
+        auto data = line.substr(6);
+        if (data == "[DONE]") break;
+
+        try {
+            auto j = json::parse(data, nullptr, false);
+            if (j.is_discarded()) continue;
+            if (j.contains("choices") && j["choices"].is_array()) {
+                for (auto& choice : j["choices"]) {
+                    if (choice.contains("delta") && choice["delta"].contains("content")) {
+                        content += choice["delta"]["content"].get<std::string>();
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+    return content;
+}
+
+std::string LlmProxyService::GetLogDir() const {
+    wchar_t path[MAX_PATH]{};
+    if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, path))) {
+        return (fs::path(path) / "TenBox" / "llm_logs").string();
+    }
+    return {};
+}
+
+void LlmProxyService::OpenLogFile() {
+    std::lock_guard<std::mutex> lock(log_mutex_);
+    if (log_file_) return;
+
+    log_dir_ = GetLogDir();
+    if (log_dir_.empty()) return;
+
+    std::error_code ec;
+    fs::create_directories(log_dir_, ec);
+    if (ec) return;
+
+    current_log_date_ = TodayDateStr();
+    auto path = (fs::path(log_dir_) / ("llm_" + current_log_date_ + ".jsonl")).string();
+    log_file_ = fopen(path.c_str(), "ab");
+}
+
+void LlmProxyService::CloseLogFile() {
+    std::lock_guard<std::mutex> lock(log_mutex_);
+    if (log_file_) {
+        fclose(log_file_);
+        log_file_ = nullptr;
+    }
+    current_log_date_.clear();
+}
+
+void LlmProxyService::WriteLogEntry(const std::string& request_body,
+                                     const std::string& response_body,
+                                     const std::string& alias,
+                                     const std::string& model,
+                                     bool is_streaming, int status_code) {
+    std::lock_guard<std::mutex> lock(log_mutex_);
+    if (!log_file_) return;
+
+    auto today = TodayDateStr();
+    if (today != current_log_date_) {
+        fclose(log_file_);
+        current_log_date_ = today;
+        auto path = (fs::path(log_dir_) / ("llm_" + today + ".jsonl")).string();
+        log_file_ = fopen(path.c_str(), "ab");
+        if (!log_file_) return;
+    }
+
+    json entry;
+    entry["timestamp"] = IsoTimestamp();
+    entry["alias"] = alias;
+    entry["model"] = model;
+    entry["stream"] = is_streaming;
+    entry["status"] = status_code;
+
+    // Parse request to extract messages and params
+    try {
+        auto req = json::parse(request_body, nullptr, false);
+        if (!req.is_discarded() && req.is_object()) {
+            if (req.contains("messages")) entry["messages"] = req["messages"];
+            if (req.contains("temperature")) entry["temperature"] = req["temperature"];
+            if (req.contains("max_tokens")) entry["max_tokens"] = req["max_tokens"];
+            if (req.contains("top_p")) entry["top_p"] = req["top_p"];
+        }
+    } catch (...) {}
+
+    // Extract response content
+    if (status_code >= 200 && status_code < 300) {
+        if (is_streaming) {
+            entry["response"] = ExtractSseContent(response_body);
+        } else {
+            try {
+                auto resp = json::parse(response_body, nullptr, false);
+                if (!resp.is_discarded() && resp.is_object()) {
+                    if (resp.contains("choices") && resp["choices"].is_array() &&
+                        !resp["choices"].empty()) {
+                        auto& choice = resp["choices"][0];
+                        if (choice.contains("message"))
+                            entry["response"] = choice["message"];
+                    }
+                    if (resp.contains("usage"))
+                        entry["usage"] = resp["usage"];
+                }
+            } catch (...) {
+                entry["response"] = response_body;
+            }
+        }
+    } else {
+        try {
+            auto err = json::parse(response_body, nullptr, false);
+            if (!err.is_discarded()) entry["error"] = err;
+            else entry["error"] = response_body;
+        } catch (...) {
+            entry["error"] = response_body;
+        }
+    }
+
+    auto line = entry.dump(-1, ' ', false, json::error_handler_t::replace) + "\n";
+    fwrite(line.data(), 1, line.size(), log_file_);
+    fflush(log_file_);
 }
 
 }  // namespace llm_proxy
