@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct LlmProxySheet: View {
@@ -61,6 +62,39 @@ struct LlmProxySheet: View {
                 .padding(.horizontal)
                 .padding(.bottom, 4)
 
+            Divider()
+
+            HStack {
+                Toggle("Enable Request Logging", isOn: Binding(
+                    get: { appState.llmLoggingEnabled },
+                    set: { appState.setLlmLogging(enabled: $0) }
+                ))
+                .toggleStyle(.checkbox)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 6)
+
+            HStack(spacing: 4) {
+                Text("Logs saved to:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button {
+                    let dir = LlmProxyService.logDir
+                    try? FileManager.default.createDirectory(
+                        atPath: dir, withIntermediateDirectories: true)
+                    NSWorkspace.shared.open(URL(fileURLWithPath: dir))
+                } label: {
+                    Text(LlmProxyService.logDir.replacingOccurrences(
+                        of: NSHomeDirectory(), with: "~"))
+                        .font(.caption)
+                }
+                .buttonStyle(.link)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 4)
+
             HStack {
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -68,7 +102,7 @@ struct LlmProxySheet: View {
             }
             .padding()
         }
-        .frame(width: 440, height: 380)
+        .frame(width: 440, height: 440)
         .sheet(isPresented: $showAddSheet) {
             EditLlmMappingSheet(mode: .add)
         }

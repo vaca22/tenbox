@@ -9,6 +9,19 @@ final class LlmProxyService {
     private let queue = DispatchQueue(label: "com.tenbox.llm-proxy", qos: .userInitiated)
     private(set) var listeningPort: UInt16 = 0
 
+    // MARK: - Logging state
+
+    private var loggingEnabled = false
+    private let logLock = NSLock()
+    private var logFileHandle: FileHandle?
+    private var currentLogDate = ""
+
+    static var logDir: String {
+        let paths = NSSearchPathForDirectoriesInDomains(.applicationSupportDirectory, .userDomainMask, true)
+        let base = (paths.first ?? NSHomeDirectory() + "/Library/Application Support") + "/TenBox"
+        return base + "/llm_logs"
+    }
+
     func updateMappings(_ newMappings: [LlmModelMapping]) {
         mappingsLock.lock()
         mappings = newMappings
@@ -68,7 +81,144 @@ final class LlmProxyService {
         }
         connections.removeAll()
         listeningPort = 0
+        logLock.lock()
+        closeLogFile()
+        loggingEnabled = false
+        logLock.unlock()
         NSLog("[llm-proxy] Stopped")
+    }
+
+    // MARK: - Logging
+
+    func setLogging(enabled: Bool) {
+        logLock.lock()
+        let wasEnabled = loggingEnabled
+        loggingEnabled = enabled
+        if enabled && !wasEnabled {
+            openLogFile()
+            NSLog("[llm-proxy] Request logging enabled -> %@", Self.logDir)
+        } else if !enabled && wasEnabled {
+            NSLog("[llm-proxy] Request logging disabled")
+            closeLogFile()
+        }
+        logLock.unlock()
+    }
+
+    private func openLogFile() {
+        guard logFileHandle == nil else { return }
+        let dir = Self.logDir
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        currentLogDate = Self.todayDateStr()
+        let path = (dir as NSString).appendingPathComponent("llm_\(currentLogDate).jsonl")
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
+        }
+        logFileHandle = FileHandle(forWritingAtPath: path)
+        logFileHandle?.seekToEndOfFile()
+    }
+
+    private func closeLogFile() {
+        try? logFileHandle?.close()
+        logFileHandle = nil
+        currentLogDate = ""
+    }
+
+    private func writeLogEntry(requestBody: Data, responseBody: Data,
+                               alias: String, model: String,
+                               isStreaming: Bool, statusCode: Int) {
+        logLock.lock()
+        defer { logLock.unlock() }
+        guard loggingEnabled, logFileHandle != nil else { return }
+
+        let today = Self.todayDateStr()
+        if today != currentLogDate {
+            closeLogFile()
+            currentLogDate = today
+            let path = (Self.logDir as NSString).appendingPathComponent("llm_\(today).jsonl")
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil)
+            }
+            logFileHandle = FileHandle(forWritingAtPath: path)
+            logFileHandle?.seekToEndOfFile()
+            guard logFileHandle != nil else { return }
+        }
+
+        var entry: [String: Any] = [
+            "timestamp": Self.isoTimestamp(),
+            "alias": alias,
+            "model": model,
+            "stream": isStreaming,
+            "status": statusCode,
+        ]
+
+        if let req = try? JSONSerialization.jsonObject(with: requestBody) as? [String: Any] {
+            if let messages = req["messages"] { entry["messages"] = messages }
+            if let temperature = req["temperature"] { entry["temperature"] = temperature }
+            if let maxTokens = req["max_tokens"] { entry["max_tokens"] = maxTokens }
+            if let topP = req["top_p"] { entry["top_p"] = topP }
+        }
+
+        if statusCode >= 200 && statusCode < 300 {
+            if isStreaming {
+                entry["response"] = Self.extractSseContent(responseBody)
+            } else if let resp = try? JSONSerialization.jsonObject(with: responseBody) as? [String: Any] {
+                if let choices = resp["choices"] as? [[String: Any]], let first = choices.first,
+                   let message = first["message"] {
+                    entry["response"] = message
+                }
+                if let usage = resp["usage"] { entry["usage"] = usage }
+            } else {
+                entry["response"] = String(data: responseBody, encoding: .utf8) ?? ""
+            }
+        } else {
+            if let errObj = try? JSONSerialization.jsonObject(with: responseBody) {
+                entry["error"] = errObj
+            } else {
+                entry["error"] = String(data: responseBody, encoding: .utf8) ?? ""
+            }
+        }
+
+        guard let lineData = try? JSONSerialization.data(withJSONObject: entry,
+                                                          options: [.sortedKeys]) else { return }
+        var output = lineData
+        output.append(Data("\n".utf8))
+        logFileHandle?.write(output)
+    }
+
+    private static func todayDateStr() -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        return fmt.string(from: Date())
+    }
+
+    private static func isoTimestamp() -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        return fmt.string(from: Date())
+    }
+
+    /// Extract assistant content from raw SSE stream by concatenating delta content pieces.
+    private static func extractSseContent(_ data: Data) -> String {
+        guard let raw = String(data: data, encoding: .utf8) else { return "" }
+        var content = ""
+        for line in raw.components(separatedBy: "\n") {
+            let trimmed = line.hasSuffix("\r") ? String(line.dropLast()) : line
+            guard trimmed.hasPrefix("data: ") else { continue }
+            let payload = String(trimmed.dropFirst(6))
+            if payload == "[DONE]" { break }
+            guard let chunkData = payload.data(using: .utf8),
+                  let j = try? JSONSerialization.jsonObject(with: chunkData) as? [String: Any],
+                  let choices = j["choices"] as? [[String: Any]] else { continue }
+            for choice in choices {
+                if let delta = choice["delta"] as? [String: Any],
+                   let c = delta["content"] as? String {
+                    content += c
+                }
+            }
+        }
+        return content
     }
 
     // MARK: - Connection handling
@@ -210,8 +360,10 @@ final class LlmProxyService {
             return
         }
 
+        let alias = mapping.alias
+        let targetModel = mapping.model
         let isStreaming = json["stream"] as? Bool ?? false
-        json["model"] = mapping.model
+        json["model"] = targetModel
 
         guard let modifiedBody = try? JSONSerialization.data(withJSONObject: json) else {
             sendError(conn, status: 500, statusText: "Internal Server Error",
@@ -219,8 +371,10 @@ final class LlmProxyService {
             return
         }
 
+        let originalRequestBody = body
         forwardToUpstream(conn, mapping: mapping, body: modifiedBody,
-                          isStreaming: isStreaming, keepAlive: keepAlive)
+                          isStreaming: isStreaming, keepAlive: keepAlive,
+                          logContext: (originalRequestBody, alias, targetModel))
     }
 
     private func handleModels(_ conn: NWConnection, keepAlive: Bool) {
@@ -239,8 +393,11 @@ final class LlmProxyService {
 
     // MARK: - Upstream forwarding
 
+    private typealias LogContext = (requestBody: Data, alias: String, model: String)
+
     private func forwardToUpstream(_ conn: NWConnection, mapping: LlmModelMapping,
-                                   body: Data, isStreaming: Bool, keepAlive: Bool) {
+                                   body: Data, isStreaming: Bool, keepAlive: Bool,
+                                   logContext: LogContext) {
         var urlStr = mapping.targetUrl
         if urlStr.hasSuffix("/") { urlStr = String(urlStr.dropLast()) }
         urlStr += "/chat/completions"
@@ -264,28 +421,44 @@ final class LlmProxyService {
         request.httpBody = body
 
         if isStreaming {
-            forwardStreaming(conn, request: request, keepAlive: keepAlive)
+            forwardStreaming(conn, request: request, keepAlive: keepAlive, logContext: logContext)
         } else {
-            forwardNonStreaming(conn, request: request, keepAlive: keepAlive)
+            forwardNonStreaming(conn, request: request, keepAlive: keepAlive, logContext: logContext)
         }
     }
 
-    private func forwardNonStreaming(_ conn: NWConnection, request: URLRequest, keepAlive: Bool) {
+    private func forwardNonStreaming(_ conn: NWConnection, request: URLRequest,
+                                    keepAlive: Bool, logContext: LogContext) {
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 502
             let body = data ?? Data()
             self?.queue.async {
                 self?.sendResponse(conn, status: statusCode, statusText: "OK",
                                    contentType: "application/json", body: body, keepAlive: keepAlive)
+                self?.writeLogEntry(requestBody: logContext.requestBody,
+                                    responseBody: body,
+                                    alias: logContext.alias,
+                                    model: logContext.model,
+                                    isStreaming: false,
+                                    statusCode: statusCode)
             }
         }
         task.resume()
     }
 
-    private func forwardStreaming(_ conn: NWConnection, request: URLRequest, keepAlive: Bool) {
+    private func forwardStreaming(_ conn: NWConnection, request: URLRequest,
+                                  keepAlive: Bool, logContext: LogContext) {
         let delegate = StreamingDelegate(connection: conn, keepAlive: keepAlive, proxyQueue: queue)
         delegate.readNextRequest = { [weak self] in
             self?.readRequest(conn)
+        }
+        delegate.onComplete = { [weak self] sseData, statusCode in
+            self?.writeLogEntry(requestBody: logContext.requestBody,
+                                responseBody: sseData,
+                                alias: logContext.alias,
+                                model: logContext.model,
+                                isStreaming: true,
+                                statusCode: statusCode)
         }
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
@@ -337,12 +510,15 @@ private class StreamingDelegate: NSObject, URLSessionDataDelegate {
     let keepAlive: Bool
     let proxyQueue: DispatchQueue
     var readNextRequest: (() -> Void)?
+    var onComplete: ((_ sseData: Data, _ statusCode: Int) -> Void)?
     weak var session: URLSession?
     private var headerSent = false
     private var completed = false
     private var failed = false
     private var pendingChunks: [Data] = []
     private var isSending = false
+    private var sseBuffer = Data()
+    private var upstreamStatusCode = 200
 
     init(connection: NWConnection, keepAlive: Bool, proxyQueue: DispatchQueue) {
         self.connection = connection
@@ -354,6 +530,7 @@ private class StreamingDelegate: NSObject, URLSessionDataDelegate {
                     didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+        upstreamStatusCode = status
         let ct = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
         let isSSE = ct.lowercased().contains("text/event-stream")
 
@@ -371,6 +548,7 @@ private class StreamingDelegate: NSObject, URLSessionDataDelegate {
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         guard headerSent else { return }
+        sseBuffer.append(data)
         let chunkHeader = String(data.count, radix: 16) + "\r\n"
         var payload = Data(chunkHeader.utf8)
         payload.append(data)
@@ -419,6 +597,7 @@ private class StreamingDelegate: NSObject, URLSessionDataDelegate {
     }
 
     private func finish() {
+        onComplete?(sseBuffer, upstreamStatusCode)
         session?.invalidateAndCancel()
         if failed {
             connection.cancel()

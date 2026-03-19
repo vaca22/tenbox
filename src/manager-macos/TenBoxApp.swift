@@ -130,6 +130,7 @@ class AppState: ObservableObject {
     @Published var startVmError: String?
     @Published var portForwardError: String?
     @Published var llmMappings: [LlmModelMapping] = []
+    @Published var llmLoggingEnabled = false
 
     let llmProxy = LlmProxyService()
     private static let kLlmGuestIp = "10.0.2.3"
@@ -432,6 +433,7 @@ class AppState: ObservableObject {
                 apiType: .openaiCompletions
             )
         }
+        llmLoggingEnabled = llmProxy["enable_logging"] as? Bool ?? false
     }
 
     private func saveLlmMappings() {
@@ -449,7 +451,10 @@ class AppState: ObservableObject {
                 "api_type": "openai_completions",
             ]
         }
-        json["llm_proxy"] = ["mappings": mappingsArray]
+        json["llm_proxy"] = [
+            "mappings": mappingsArray,
+            "enable_logging": llmLoggingEnabled,
+        ] as [String: Any]
         if let data = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted) {
             try? data.write(to: URL(fileURLWithPath: settingsPath))
         }
@@ -476,10 +481,19 @@ class AppState: ObservableObject {
         syncLlmProxy()
     }
 
+    func setLlmLogging(enabled: Bool) {
+        llmLoggingEnabled = enabled
+        saveLlmMappings()
+        llmProxy.setLogging(enabled: enabled)
+    }
+
     private func startLlmProxyIfNeeded() {
         guard !llmMappings.isEmpty else { return }
         llmProxy.updateMappings(llmMappings)
         _ = llmProxy.start()
+        if llmLoggingEnabled {
+            llmProxy.setLogging(enabled: true)
+        }
     }
 
     private func syncLlmProxy() {

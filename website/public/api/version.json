@@ -16,12 +16,12 @@
       "min_os": "Windows 10"
     },
     "macos": {
-      "latest_version": "0.5.1",
-      "release_notes": "配置LLM代理超时时间为5分钟",
-      "release_date": "2026-03-18",
-      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox-0.5.1.dmg",
-      "sha256": "99c557f25e06e2c7d1bdff7c5d77c3714ed8224b7e0a75145761dd0e194ea4d0",
-      "size": 4484720,
+      "latest_version": "0.5.2",
+      "release_notes": "支持LLM代理日志",
+      "release_date": "2026-03-19",
+      "download_url": "https://files.xiaozhi.me/tenbox/releases/TenBox-0.5.2.dmg",
+      "sha256": "dfc7b1fc05543efd0d5e3516cb234c6a99bf852f341c73a40f4c623ed3c7f87e",
+      "size": 4517265,
       "min_os": "macOS 12"
     }
   }

@@ -25,21 +25,21 @@
       />
     </item>
     <item>
-      <title>Version 0.5.1</title>
+      <title>Version 0.5.2</title>
       <description><![CDATA[
         <ul>
-          <li>配置LLM代理超时时间为5分钟</li>
+          <li>支持LLM代理日志</li>
         </ul>
       ]]></description>
-      <pubDate>Wed, 18 Mar 2026 00:00:00 -0000</pubDate>
+      <pubDate>Thu, 19 Mar 2026 00:00:00 -0000</pubDate>
       <sparkle:minimumSystemVersion>12</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://files.xiaozhi.me/tenbox/releases/TenBox-0.5.1.zip"
+        url="https://files.xiaozhi.me/tenbox/releases/TenBox-0.5.2.zip"
         sparkle:os="macos"
-        sparkle:version="0.5.1"
-        sparkle:shortVersionString="0.5.1"
-        sparkle:edSignature="+9EjETzaPX2qI/UOrhj36ZweVxyHwXv7v8lpSzrXXt7+Q+synr/0Iz+SG+FmECrol9R/rW42uf2NJvFbOU7kDg=="
-        length="4534664"
+        sparkle:version="0.5.2"
+        sparkle:shortVersionString="0.5.2"
+        sparkle:edSignature="pQmgg6q70MgMAR484iDgp+DlBxEmpfrRuqmdoK6+aNhB4Etda29LtOnLCMlxfcUdsxFK368UH5/uyZda+CPVDA=="
+        length="4567848"
         type="application/octet-stream"
       />
     </item>
