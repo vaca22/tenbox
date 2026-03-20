@@ -23,3 +23,6 @@ CMakePresets.json
 # Website
 website/node_modules/
 website/dist/
+
+# IntelliJ / JetBrains
+.idea/
