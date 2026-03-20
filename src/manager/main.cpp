@@ -22,6 +22,7 @@ using UiShell = Win32UiShell;
 #include <filesystem>
 #include <ctime>
 #include <io.h>
+#include <share.h>
 
 static FILE* g_log_file = nullptr;
 
@@ -38,7 +39,7 @@ static void InitLogFile() {
     std::filesystem::create_directories(log_dir, ec);
     
     std::filesystem::path log_path = log_dir / L"manager.log";
-    _wfopen_s(&g_log_file, log_path.c_str(), L"a");
+    g_log_file = _wfsopen(log_path.c_str(), L"a", _SH_DENYWR);
     if (g_log_file) {
         setvbuf(g_log_file, nullptr, _IOLBF, BUFSIZ);
 

@@ -23,6 +23,7 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <share.h>
 #include <string>
 #include <vector>
 
@@ -678,7 +679,7 @@ void LlmProxyService::OpenLogFile() {
 
     current_log_date_ = TodayDateStr();
     auto path = (fs::path(log_dir_) / ("llm_" + current_log_date_ + ".jsonl")).string();
-    fopen_s(&log_file_, path.c_str(), "ab");
+    log_file_ = _fsopen(path.c_str(), "ab", _SH_DENYWR);
 }
 
 void LlmProxyService::CloseLogFile() {
@@ -703,7 +704,7 @@ void LlmProxyService::WriteLogEntry(const std::string& request_body,
         fclose(log_file_);
         current_log_date_ = today;
         auto path = (fs::path(log_dir_) / ("llm_" + today + ".jsonl")).string();
-        fopen_s(&log_file_, path.c_str(), "ab");
+        log_file_ = _fsopen(path.c_str(), "ab", _SH_DENYWR);
         if (!log_file_) return;
     }
 

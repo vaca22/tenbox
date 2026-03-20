@@ -6,21 +6,21 @@
     <description>TenBox Updates</description>
     <language>zh-CN</language>
     <item>
-      <title>Version 0.5.5</title>
+      <title>Version 0.5.6</title>
       <description><![CDATA[
         <ul>
-          <li>完善磁盘读取功能</li>
+          <li>从睡眠中唤醒时自动同步时间</li>
         </ul>
       ]]></description>
-      <pubDate>Thu, 19 Mar 2026 00:00:00 -0000</pubDate>
+      <pubDate>Fri, 20 Mar 2026 00:00:00 -0000</pubDate>
       <sparkle:minimumSystemVersion>10</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://files.xiaozhi.me/tenbox/releases/TenBox_0.5.5.msi"
+        url="https://files.xiaozhi.me/tenbox/releases/TenBox_0.5.6.msi"
         sparkle:os="windows"
-        sparkle:version="0.5.5"
-        sparkle:shortVersionString="0.5.5"
+        sparkle:version="0.5.6"
+        sparkle:shortVersionString="0.5.6"
         sparkle:installerArguments="/passive"
-        length="3231744"
+        length="3227648"
         type="application/octet-stream"
       />
     </item>
@@ -28,7 +28,7 @@
       <title>Version 0.5.6</title>
       <description><![CDATA[
         <ul>
-          <li>激活窗体时自动同步时间</li>
+          <li>从睡眠中唤醒时自动同步时间</li>
         </ul>
       ]]></description>
       <pubDate>Fri, 20 Mar 2026 00:00:00 -0000</pubDate>
